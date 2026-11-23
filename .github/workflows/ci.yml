@@ -20,6 +20,8 @@ jobs:
           cache: false
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
+      - name: Test development scripts
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Verify generated models
         run: |
           go generate ./models
@@ -30,7 +32,7 @@ jobs:
         shell: bash
         run: |
           go test -race -json -shuffle=on -count=1 -coverprofile=coverage.out ./... | tee test-results.jsonl
-          go run ./internal/testgate test-results.jsonl
+          python3 scripts/testgate.py test-results.jsonl
       - name: Build all packages and examples
         run: go build ./...
       - name: Upload coverage

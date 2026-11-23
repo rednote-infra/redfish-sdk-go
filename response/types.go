@@ -8,7 +8,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 type Response struct {
@@ -32,12 +31,12 @@ func (r *Response) Operation() (*models.RedfishResponse, error) {
 	if err := r.Decode(result); err != nil {
 		return nil, err
 	}
-	result.HTTPStatus = pointer.Ptr(int64(r.StatusCode))
+	result.HTTPStatus = models.Ptr(int64(r.StatusCode))
 	if location := r.Header.Get(wire.HeaderLocation); location != "" {
-		result.TaskMonitor = pointer.Ptr(location)
+		result.TaskMonitor = models.Ptr(location)
 	}
 	if retry := r.Header.Get(wire.HeaderRetryAfter); retry != "" {
-		result.RetryAfter = pointer.Ptr(retry)
+		result.RetryAfter = models.Ptr(retry)
 	}
 	if result.TaskURI == nil {
 		result.TaskURI = result.ODataID

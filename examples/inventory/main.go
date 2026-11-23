@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/rednote-infra/redfish-sdk-go/client"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
+	"github.com/rednote-infra/redfish-sdk-go/models"
 )
 
 func main() {
@@ -24,6 +24,6 @@ func main() {
 		log.Fatal(err)
 	}
 	for _, system := range systems {
-		fmt.Printf("%s: %s %s (%s)\n", pointer.Value(system.Name), pointer.Value(system.Manufacturer), pointer.Value(system.Model), pointer.Value(system.PowerState))
+		fmt.Printf("%s: %s %s (%s)\n", models.Value(system.Name), models.Value(system.Manufacturer), models.Value(system.Model), models.Value(system.PowerState))
 	}
 }

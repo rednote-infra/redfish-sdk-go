@@ -2,7 +2,7 @@
 // Unknown enum values and vendor properties are retained for forward compatibility.
 package models
 
-//go:generate go run ../internal/modelgen
+//go:generate python3 ../scripts/generate_models.py
 
 import (
 	"bytes"

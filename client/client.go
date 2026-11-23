@@ -21,7 +21,6 @@ import (
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -492,7 +491,7 @@ func (c *Client) GetETag(ctx context.Context, uri string) (string, error) {
 	if err = r.Decode(&entity); err != nil {
 		return "", err
 	}
-	return pointer.Value(entity.ODataETag), nil
+	return models.Value(entity.ODataETag), nil
 }
 
 func (c *Client) Close() error {

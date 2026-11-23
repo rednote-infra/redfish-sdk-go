@@ -11,7 +11,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -53,12 +52,12 @@ type OperationResult struct {
 }
 
 func taskFailure(task *models.Task) error {
-	state := pointer.Value(task.TaskState)
+	state := models.Value(task.TaskState)
 	switch state {
 	case TaskException, TaskKilled, TaskCancelled, TaskInterrupted:
 		return &AsyncOperationError{Task: task, Message: "Redfish task terminated with state " + state}
 	}
-	if state == TaskCompleted && pointer.Value(task.TaskStatus) == "Critical" {
+	if state == TaskCompleted && models.Value(task.TaskStatus) == "Critical" {
 		return &AsyncOperationError{Task: task, Message: "Redfish task completed with critical status"}
 	}
 	return nil
@@ -90,7 +89,7 @@ func (c *Client) WaitForTask(ctx context.Context, id string, options PollOptions
 		if err != nil {
 			return nil, err
 		}
-		uri = pointer.Value(task.ODataID)
+		uri = models.Value(task.ODataID)
 	}
 	result, err := c.pollOperation(ctx, uri, false, options)
 	if result == nil {
@@ -103,21 +102,21 @@ func (c *Client) WaitForOperation(ctx context.Context, operation *models.Redfish
 	if operation == nil {
 		return nil, errors.New("operation must not be nil")
 	}
-	uri := pointer.Value(operation.TaskMonitor)
+	uri := models.Value(operation.TaskMonitor)
 	monitor := uri != ""
 	if uri == "" {
-		uri = pointer.Value(operation.TaskURI)
+		uri = models.Value(operation.TaskURI)
 	}
 	if uri == "" {
-		uri = pointer.Value(operation.ODataID)
+		uri = models.Value(operation.ODataID)
 	}
 	if uri == "" {
-		if pointer.Value(operation.HTTPStatus) == http.StatusAccepted {
+		if models.Value(operation.HTTPStatus) == http.StatusAccepted {
 			return nil, errors.New("accepted operation does not advertise a task monitor or task URI")
 		}
 		return &OperationResult{}, nil
 	}
-	if retry := pointer.Value(operation.RetryAfter); retry != "" {
+	if retry := models.Value(operation.RetryAfter); retry != "" {
 		headers := http.Header{}
 		headers.Set(wire.HeaderRetryAfter, retry)
 		options.initialDelay = retryDelay(headers, 0, 0)
@@ -175,14 +174,14 @@ func (c *Client) pollOperation(ctx context.Context, uri string, monitor bool, op
 			if err = taskFailure(&task); err != nil {
 				return result, err
 			}
-			if pointer.Value(task.TaskState) == TaskCompleted {
+			if models.Value(task.TaskState) == TaskCompleted {
 				return result, nil
 			}
-			if !monitor && pointer.Value(task.TaskState) == "" {
+			if !monitor && models.Value(task.TaskState) == "" {
 				return result, errors.New("task resource is missing TaskState")
 			}
 		}
-		if monitor && response.StatusCode != http.StatusAccepted && (result.Task == nil || pointer.Value(result.Task.TaskState) == "") {
+		if monitor && response.StatusCode != http.StatusAccepted && (result.Task == nil || models.Value(result.Task.TaskState) == "") {
 			return result, nil
 		}
 		if !monitor && result.Task == nil {

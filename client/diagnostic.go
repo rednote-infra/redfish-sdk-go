@@ -14,7 +14,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -141,7 +140,7 @@ func (c *Client) diagnosticAction(ctx context.Context, collectionURI, name, logI
 				return nil, "", errors.New("diagnostic action is ambiguous; specify LogID")
 			}
 			selected = action
-			source = pointer.Value(service.ODataID)
+			source = models.Value(service.ODataID)
 		}
 	}
 	if selected == nil {
@@ -178,7 +177,7 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 	if err != nil {
 		return nil, err
 	}
-	task := &DiagnosticTask{Vendor: vendor, Task: &models.Task{TaskState: pointer.Ptr(TaskRunning)}, DownloadMethod: http.MethodGet, FreshTrigger: true}
+	task := &DiagnosticTask{Vendor: vendor, Task: &models.Task{TaskState: models.Ptr(TaskRunning)}, DownloadMethod: http.MethodGet, FreshTrigger: true}
 	body, err := provider.BuildBody(options)
 	if err != nil {
 		return nil, err
@@ -219,7 +218,7 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 			task.DownloadBody[wire.FieldPath] = body[wire.FieldContent]
 		}
 	case VendorSmoothcompute:
-		actions, err := c.resourceActions(ctx, strings.TrimRight(pointer.Value(manager.ODataID), "/")+"/DiagnosticService")
+		actions, err := c.resourceActions(ctx, strings.TrimRight(models.Value(manager.ODataID), "/")+"/DiagnosticService")
 		if err != nil {
 			return nil, err
 		}
@@ -259,7 +258,7 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 			return nil, err
 		}
 		target = action.Target
-		task.SourceLogServiceURI = pointer.Value(service.ODataID)
+		task.SourceLogServiceURI = models.Value(service.ODataID)
 	}
 	if target == "" {
 		name := wire.ActionCollectDiagnosticData
@@ -324,9 +323,9 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 			task.Task.ODataID = collection.Members[0].ODataID
 		}
 	}
-	task.Task.TaskMonitor = pointer.Ptr(response.Header.Get(wire.HeaderLocation))
-	if pointer.Value(task.Task.TaskState) == "" {
-		task.Task.TaskState = pointer.Ptr(TaskRunning)
+	task.Task.TaskMonitor = models.Ptr(response.Header.Get(wire.HeaderLocation))
+	if models.Value(task.Task.TaskState) == "" {
+		task.Task.TaskState = models.Ptr(TaskRunning)
 	}
 	if artifact := response.Header.Get(wire.HeaderContentLocation); artifact != "" {
 		task.Task.AdditionalDataURI = &artifact
@@ -368,19 +367,19 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 		options.Timeout = 30 * time.Minute
 	}
 	if task.ProgressURI == "" {
-		if pointer.Value(task.Task.TaskState) == TaskCompleted {
+		if models.Value(task.Task.TaskState) == TaskCompleted {
 			return taskFailure(task.Task)
 		}
 		operation := &models.RedfishResponse{ODataID: task.Task.ODataID, TaskURI: task.Task.ODataID, TaskMonitor: task.Task.TaskMonitor}
 		if task.Response != nil {
-			operation.HTTPStatus = pointer.Ptr(int64(task.Response.StatusCode))
-			operation.RetryAfter = pointer.Ptr(task.Response.Header.Get(wire.HeaderRetryAfter))
+			operation.HTTPStatus = models.Ptr(int64(task.Response.StatusCode))
+			operation.RetryAfter = models.Ptr(task.Response.Header.Get(wire.HeaderRetryAfter))
 		}
-		if pointer.Value(operation.TaskMonitor) == "" {
+		if models.Value(operation.TaskMonitor) == "" {
 			operation.TaskMonitor = nil
 		}
-		if pointer.Value(operation.ODataID) == "" && pointer.Value(operation.TaskMonitor) == "" {
-			if pointer.Value(task.Task.AdditionalDataURI) != "" {
+		if models.Value(operation.ODataID) == "" && models.Value(operation.TaskMonitor) == "" {
+			if models.Value(task.Task.AdditionalDataURI) != "" {
 				return nil
 			}
 			return errors.New("diagnostic collection returned no task or monitor reference")
@@ -437,7 +436,7 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 					kind = _diagnosticAllLogs
 				}
 				task.DownloadBody = Object{wire.FieldType: kind, wire.FieldContent: progress.TarPath}
-				task.Task.TaskState = pointer.Ptr(TaskCompleted)
+				task.Task.TaskState = models.Ptr(TaskCompleted)
 				return nil
 			}
 			if failed && (!task.FreshTrigger || iteration > 0) {
@@ -469,7 +468,7 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 						return &AsyncOperationError{Task: task.Task, Message: "Lenovo diagnostic collection failed"}
 					}
 				}
-				task.Task.TaskState = pointer.Ptr(TaskCompleted)
+				task.Task.TaskState = models.Ptr(TaskCompleted)
 				return nil
 			}
 		}
@@ -497,10 +496,10 @@ func (c *Client) DownloadDiagnosticData(ctx context.Context, taskOrEntry any, pa
 		if item == nil {
 			return "", errors.New("log entry must not be nil")
 		}
-		if pointer.Value(item.AdditionalDataURI) == "" {
+		if models.Value(item.AdditionalDataURI) == "" {
 			return "", errors.New("log entry is missing AdditionalDataURI")
 		}
-		return c.Download(ctx, pointer.Value(item.AdditionalDataURI), path)
+		return c.Download(ctx, models.Value(item.AdditionalDataURI), path)
 	case *models.Task:
 		if item == nil {
 			return "", errors.New("task must not be nil")
@@ -528,8 +527,8 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 	if uri := taskArtifactURI(task); uri != "" {
 		return c.Download(ctx, uri, path)
 	}
-	if pointer.Value(task.Task.ODataID) != "" {
-		fresh, err := getResource[models.Task](ctx, c, pointer.Value(task.Task.ODataID))
+	if models.Value(task.Task.ODataID) != "" {
+		fresh, err := getResource[models.Task](ctx, c, models.Value(task.Task.ODataID))
 		if err != nil && !errors.Is(err, sdkerrors.ErrNotFound) {
 			return "", err
 		}
@@ -549,7 +548,7 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 			}
 		}
 	}
-	if uri := pointer.Value(task.Task.AdditionalDataURI); uri != "" {
+	if uri := models.Value(task.Task.AdditionalDataURI); uri != "" {
 		return c.Download(ctx, uri, path)
 	}
 	if task.Task.Links != nil {
@@ -558,8 +557,8 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 			if err != nil {
 				return "", err
 			}
-			if pointer.Value(entry.AdditionalDataURI) != "" {
-				return c.Download(ctx, pointer.Value(entry.AdditionalDataURI), path)
+			if models.Value(entry.AdditionalDataURI) != "" {
+				return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
 			}
 		}
 	}
@@ -570,8 +569,8 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 				if err != nil {
 					return "", err
 				}
-				if pointer.Value(entry.AdditionalDataURI) != "" {
-					return c.Download(ctx, pointer.Value(entry.AdditionalDataURI), path)
+				if models.Value(entry.AdditionalDataURI) != "" {
+					return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
 				}
 			}
 		}
@@ -586,11 +585,11 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 			return "", err
 		}
 		slices.SortFunc(entries, func(a, b models.LogEntry) int {
-			return strings.Compare(pointer.Value(b.Created), pointer.Value(a.Created))
+			return strings.Compare(models.Value(b.Created), models.Value(a.Created))
 		})
 		for _, entry := range entries {
-			if pointer.Value(entry.AdditionalDataURI) != "" {
-				return c.Download(ctx, pointer.Value(entry.AdditionalDataURI), path)
+			if models.Value(entry.AdditionalDataURI) != "" {
+				return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
 			}
 		}
 	}
@@ -699,7 +698,7 @@ func taskArtifactURI(task *DiagnosticTask) string {
 	if task.Task == nil {
 		return ""
 	}
-	if uri := pointer.Value(task.Task.AdditionalDataURI); uri != "" {
+	if uri := models.Value(task.Task.AdditionalDataURI); uri != "" {
 		return uri
 	}
 	if task.Response != nil {
@@ -778,7 +777,7 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 		if err != nil {
 			return nil, err
 		}
-		return &DiagnosticTask{Task: &models.Task{TaskState: pointer.Ptr(TaskRunning)}, Vendor: p.vendor, ProgressURI: progressURI, DownloadURI: download.Target, DownloadMethod: http.MethodPost, SourceLogServiceURI: source}, nil
+		return &DiagnosticTask{Task: &models.Task{TaskState: models.Ptr(TaskRunning)}, Vendor: p.vendor, ProgressURI: progressURI, DownloadURI: download.Target, DownloadMethod: http.MethodPost, SourceLogServiceURI: source}, nil
 	}
 	if p.vendor != VendorGeneric && p.vendor != VendorIEIT {
 		return nil, nil
@@ -791,13 +790,13 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 		return nil, err
 	}
 	for _, task := range tasks {
-		if pointer.Value(task.TaskState) != TaskRunning && pointer.Value(task.TaskState) != TaskPending {
+		if models.Value(task.TaskState) != TaskRunning && models.Value(task.TaskState) != TaskPending {
 			continue
 		}
-		name := strings.ToLower(pointer.Value(task.Name))
+		name := strings.ToLower(models.Value(task.Name))
 		target := ""
 		if task.Payload != nil {
-			target = pointer.Value(task.Payload.TargetURI)
+			target = models.Value(task.Payload.TargetURI)
 		}
 		if !strings.Contains(name, "diagnostic") && !strings.Contains(name, "log collect") && !strings.Contains(target, wire.ActionCollectDiagnosticData) && !strings.Contains(target, wire.ActionCollectAllLog) {
 			continue

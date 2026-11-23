@@ -11,7 +11,7 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
+	"github.com/rednote-infra/redfish-sdk-go/models"
 )
 
 func TestBIOSUsesPendingSettingsETagAndSchedule(t *testing.T) {
@@ -134,7 +134,7 @@ func TestTaskPollAndTerminalFailure(t *testing.T) {
 				}
 			})
 			task, err := c.WaitForTask(context.Background(), "/task", PollOptions{Interval: time.Millisecond, Timeout: time.Second})
-			if state == TaskCompleted && (err != nil || pointer.Value(task.TaskState) != state) {
+			if state == TaskCompleted && (err != nil || models.Value(task.TaskState) != state) {
 				t.Fatalf("completion: %v", err)
 			}
 			var async *AsyncOperationError
@@ -152,7 +152,7 @@ func TestVendorUpdateBodies(t *testing.T) {
 	}{{vendor: VendorNettrix, key: "SaveConfig", namespace: ""}, {vendor: VendorXFusion, key: "PreserveConfig", namespace: ""}, {vendor: VendorH3C, key: "Preserve", namespace: "Public"}, {vendor: VendorZTE, key: "PreserveConf", namespace: "Public"}, {vendor: VendorInspur, key: "PreserveConf", namespace: "Public"}}
 	for _, test := range tests {
 		t.Run(string(test.vendor), func(t *testing.T) {
-			body, err := NewProviderRegistry().Update(test.vendor).BuildBody(UpdateRequest{ImageURI: "https://images.invalid/fw.bin", PreserveConfig: pointer.Ptr(false)})
+			body, err := NewProviderRegistry().Update(test.vendor).BuildBody(UpdateRequest{ImageURI: "https://images.invalid/fw.bin", PreserveConfig: models.Ptr(false)})
 			if err != nil {
 				t.Fatal(err)
 			}

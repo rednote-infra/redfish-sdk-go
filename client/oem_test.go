@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func TestUpdateWireBodiesMatchPythonSDK(t *testing.T) {
@@ -37,12 +36,12 @@ func TestUpdateWireBodiesMatchPythonSDK(t *testing.T) {
 
 func TestExtractorsMatchObservedLayouts(t *testing.T) {
 	oem := models.Oem{"Public": json.RawMessage(`{"SpeedRatio":33,"temperature":42,"TemperatureCelsius":41}`), "xFusion": json.RawMessage(`{"SpeedRatio":35,"TemperatureCelsius":44}`), "gOemCustomeString": json.RawMessage(`{"SpeedRatio":0}`)}
-	fan := &models.Fan{OEM: &oem, Reading: pointer.Ptr(int64(3000)), MaxReadingRange: pointer.Ptr(int64(6000))}
-	drive := &models.Drive{OEM: &oem, DiskTemperatureCelsius: pointer.Ptr(float64(45))}
+	fan := &models.Fan{OEM: &oem, Reading: models.Ptr(int64(3000)), MaxReadingRange: models.Ptr(int64(6000))}
+	drive := &models.Drive{OEM: &oem, DiskTemperatureCelsius: models.Ptr(float64(45))}
 	cases := []struct {
 		vendor             Vendor
 		ratio, temperature *float64
-	}{{vendor: VendorGeneric, ratio: pointer.Ptr(float64(50)), temperature: nil}, {vendor: VendorInspur, ratio: pointer.Ptr(float64(33)), temperature: pointer.Ptr(float64(42))}, {vendor: VendorH3C, ratio: pointer.Ptr(float64(33)), temperature: pointer.Ptr(float64(41))}, {vendor: VendorXFusion, ratio: pointer.Ptr(float64(35)), temperature: pointer.Ptr(float64(44))}, {vendor: VendorLenovo, ratio: pointer.Ptr(float64(50)), temperature: pointer.Ptr(float64(42))}, {vendor: VendorNettrix, ratio: pointer.Ptr(float64(33)), temperature: pointer.Ptr(float64(45))}}
+	}{{vendor: VendorGeneric, ratio: models.Ptr(float64(50)), temperature: nil}, {vendor: VendorInspur, ratio: models.Ptr(float64(33)), temperature: models.Ptr(float64(42))}, {vendor: VendorH3C, ratio: models.Ptr(float64(33)), temperature: models.Ptr(float64(41))}, {vendor: VendorXFusion, ratio: models.Ptr(float64(35)), temperature: models.Ptr(float64(44))}, {vendor: VendorLenovo, ratio: models.Ptr(float64(50)), temperature: models.Ptr(float64(42))}, {vendor: VendorNettrix, ratio: models.Ptr(float64(33)), temperature: models.Ptr(float64(45))}}
 	for _, test := range cases {
 		t.Run(string(test.vendor), func(t *testing.T) {
 			provider := NewProviderRegistry().Extractor(test.vendor)
@@ -63,7 +62,7 @@ func TestProviderRegistriesAreClientScoped(t *testing.T) {
 	if err := first.RegisterExtractor(VendorGeneric, vendorExtractor{vendor: VendorAMI}); err != nil {
 		t.Fatal(err)
 	}
-	thermal := &models.Thermal{ODataID: pointer.Ptr("/thermal"), InletHistoryTemperature: &models.Link{ODataID: pointer.Ptr("/legacy")}}
+	thermal := &models.Thermal{ODataID: models.Ptr("/thermal"), InletHistoryTemperature: &models.Link{ODataID: models.Ptr("/legacy")}}
 	uri, err := second.Extractor(VendorGeneric).InletHistoryURI(thermal)
 	if err != nil || uri != "/legacy" {
 		t.Fatal("provider registration leaked into another registry")

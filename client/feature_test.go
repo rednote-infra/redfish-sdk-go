@@ -13,7 +13,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func TestGPUDiscoveryMergesStandardTopology(t *testing.T) {
@@ -35,7 +34,7 @@ func TestGPUDiscoveryMergesStandardTopology(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gpus) != 1 || pointer.Value(gpus[0].Model) != "Accelerator-X" || len(gpus[0].SourceTypes) != 3 {
+	if len(gpus) != 1 || models.Value(gpus[0].Model) != "Accelerator-X" || len(gpus[0].SourceTypes) != 3 {
 		t.Fatalf("GPU representations were not merged: %+v", gpus)
 	}
 }
@@ -78,7 +77,7 @@ func TestRegistryResolutionSelectsHighestErrataAndFormatsMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Message != "Changed Mode to Auto." || pointer.Value(result.MessageSeverity) != "OK" || result.RegistryVersion != "1.0.2" {
+	if result.Message != "Changed Mode to Auto." || models.Value(result.MessageSeverity) != "OK" || result.RegistryVersion != "1.0.2" {
 		t.Fatalf("wrong resolution: %+v", result)
 	}
 }
@@ -96,7 +95,7 @@ func TestAttributeValidationRejectsUnknownReadOnlyAndWrongTypes(t *testing.T) {
 		t.Fatal("fixture has no attributes")
 	}
 	for _, definition := range registry.RegistryEntries.Attributes {
-		if definition.Type != nil && *definition.Type == "Integer" && !pointer.Value(definition.ReadOnly) {
+		if definition.Type != nil && *definition.Type == "Integer" && !models.Value(definition.ReadOnly) {
 			if err = ValidateAttributeValues(&registry, Object{definition.AttributeName: true}); err == nil {
 				t.Fatal("bool was accepted as integer")
 			}
@@ -208,7 +207,7 @@ func TestVirtualMediaFollowsOEMFallback(t *testing.T) {
 		}
 	})
 	media, err := c.GetVirtualMediaResource(context.Background(), "cd")
-	if err != nil || pointer.Value(media.Name) != "Virtual CD" {
+	if err != nil || models.Value(media.Name) != "Virtual CD" {
 		t.Fatalf("OEM virtual media: %v", err)
 	}
 }

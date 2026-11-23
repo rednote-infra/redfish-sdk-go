@@ -12,7 +12,6 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -42,10 +41,10 @@ func (c *Client) Root(ctx context.Context) (*models.RootService, error) {
 }
 
 func requireLink(link *models.Link, name string) (string, error) {
-	if link == nil || strings.TrimSpace(pointer.Value(link.ODataID)) == "" {
+	if link == nil || strings.TrimSpace(models.Value(link.ODataID)) == "" {
 		return "", fmt.Errorf("resource does not advertise %s: %w", name, sdkerrors.ErrNotFound)
 	}
-	return pointer.Value(link.ODataID), nil
+	return models.Value(link.ODataID), nil
 }
 
 func (c *Client) rootLink(ctx context.Context, key string) (string, error) {
@@ -177,7 +176,7 @@ func (c *Client) walkCollection(ctx context.Context, uri string, consume func([]
 			if err = json.Unmarshal(raw, &identity); err != nil {
 				return failures, err
 			}
-			link := pointer.Value(identity.ODataID)
+			link := models.Value(identity.ODataID)
 			if strings.TrimSpace(link) == "" {
 				return failures, errors.New("collection member is missing @odata.id")
 			}
@@ -221,9 +220,9 @@ func (c *Client) walkCollection(ctx context.Context, uri string, consume func([]
 				return failures, err
 			}
 		}
-		next := pointer.Value(page.MembersNextLink)
+		next := models.Value(page.MembersNextLink)
 		if next == "" {
-			next = pointer.Value(page.NextLink)
+			next = models.Value(page.NextLink)
 		}
 		if next == "" {
 			pageURL = nil
@@ -245,9 +244,9 @@ func selectResource[T any](ctx context.Context, c *Client, collectionURI, id str
 		if err := json.Unmarshal(raw, &identity); err != nil {
 			return err
 		}
-		match := id == "" || (identity.ID != nil && string(*identity.ID) == id) || pointer.Value(identity.ODataID) == id
+		match := id == "" || (identity.ID != nil && string(*identity.ID) == id) || models.Value(identity.ODataID) == id
 		if !match {
-			u, err := url.Parse(pointer.Value(identity.ODataID))
+			u, err := url.Parse(models.Value(identity.ODataID))
 			match = err == nil && strings.TrimSuffix(u.Path, "/") != "" && strings.TrimSuffix(u.Path, "/")[strings.LastIndex(strings.TrimSuffix(u.Path, "/"), "/")+1:] == id
 		}
 		if match {
@@ -392,7 +391,7 @@ func (c *Client) GetODataID(ctx context.Context, key models.RedfishResource) (st
 		if len(page.Members) == 0 {
 			continue
 		}
-		data, err := c.GetRaw(ctx, pointer.Value(page.Members[0].ODataID))
+		data, err := c.GetRaw(ctx, models.Value(page.Members[0].ODataID))
 		if err != nil {
 			return "", err
 		}
@@ -431,7 +430,7 @@ func (c *Client) requireAliasCapability(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if root.ProtocolFeaturesSupported == nil || !pointer.Value(root.ProtocolFeaturesSupported.Alias) {
+	if root.ProtocolFeaturesSupported == nil || !models.Value(root.ProtocolFeaturesSupported.Alias) {
 		return errors.New("service does not advertise alias capability")
 	}
 	return nil

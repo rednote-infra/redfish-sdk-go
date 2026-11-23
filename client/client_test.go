@@ -16,7 +16,7 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
+	"github.com/rednote-infra/redfish-sdk-go/models"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc, options ...Option) (*Client, *httptest.Server) {
@@ -55,14 +55,14 @@ func TestTypedResourcesFollowLinksAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(systems) != 2 || pointer.Value(systems[1].Name) != "Beta" {
+	if len(systems) != 2 || models.Value(systems[1].Name) != "Beta" {
 		t.Fatalf("unexpected systems: %+v", systems)
 	}
 	if _, err = c.GetSystem(context.Background()); err == nil {
 		t.Fatal("ambiguous selection must fail")
 	}
 	system, err := c.GetSystem(context.Background(), "b")
-	if err != nil || pointer.Value(system.Name) != "Beta" {
+	if err != nil || models.Value(system.Name) != "Beta" {
 		t.Fatalf("selection: %v %v", system, err)
 	}
 }
@@ -282,7 +282,7 @@ func TestCachedRootCannotBeChangedByCallers(t *testing.T) {
 	*first.Systems.ODataID = "/changed"
 	*first.ProtocolFeaturesSupported.Alias = false
 	second, err := c.Root(context.Background())
-	if err != nil || pointer.Value(second.Systems.ODataID) != "/systems" || !pointer.Value(second.ProtocolFeaturesSupported.Alias) {
+	if err != nil || models.Value(second.Systems.ODataID) != "/systems" || !models.Value(second.ProtocolFeaturesSupported.Alias) {
 		t.Fatal("caller changed cached discovery data")
 	}
 }
@@ -351,7 +351,7 @@ func TestExplicitHeaderOnlySessionReturnsTokenWithoutSwitchingAuthentication(t *
 		w.WriteHeader(201)
 	})
 	session, err := c.CreateSession(context.Background(), "tester", "test-only", false)
-	if err != nil || pointer.Value(session.XAuthToken) != "created-token" || pointer.Value(session.ODataID) != "/sessions/one" {
+	if err != nil || models.Value(session.XAuthToken) != "created-token" || models.Value(session.ODataID) != "/sessions/one" {
 		t.Fatalf("session metadata lost: %v", err)
 	}
 	if c.authenticationMode() != AuthenticationBasic {

@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
+	"github.com/rednote-infra/redfish-sdk-go/models"
 )
 
 func TestDownloadAtomicAndSafeFilename(t *testing.T) {
@@ -69,7 +69,7 @@ func TestMultipartFirmwarePreservesFileAndJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pointer.Value(result.TaskMonitor) != "/monitor" {
+	if models.Value(result.TaskMonitor) != "/monitor" {
 		t.Fatal("monitor metadata was lost")
 	}
 }

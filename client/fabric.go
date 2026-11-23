@@ -6,7 +6,6 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func (c *Client) GetPorts(ctx context.Context, ownerURI string) ([]models.Port, error) {
@@ -130,7 +129,7 @@ func (c *Client) ResetPortTransceivers(ctx context.Context, portID, ownerURI str
 	if port.Actions == nil || port.Actions.ResetTransceivers == nil {
 		return nil, errors.New("port does not advertise ResetTransceivers")
 	}
-	return c.postOperation(ctx, pointer.Value(port.Actions.ResetTransceivers.Target), Object{})
+	return c.postOperation(ctx, models.Value(port.Actions.ResetTransceivers.Target), Object{})
 }
 
 func (c *Client) GetCXLLogicalDevices(ctx context.Context, deviceID string, chassisID ...string) ([]models.CXLLogicalDevice, error) {

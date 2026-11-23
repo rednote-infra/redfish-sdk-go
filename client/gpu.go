@@ -9,7 +9,6 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 // GPU discovery merges representations using topology links and usable serial numbers.
@@ -38,17 +37,17 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 	var candidates []candidate
 	add := func(gpu models.Gpu, source string, links []models.Link) {
 		identities := map[string]bool{}
-		uri := pointer.Value(gpu.ODataID)
+		uri := models.Value(gpu.ODataID)
 		if uri != "" {
 			identities[uri] = true
 		}
 		for _, link := range links {
-			if id := pointer.Value(link.ODataID); id != "" {
+			if id := models.Value(link.ODataID); id != "" {
 				identities[id] = true
 			}
 		}
 		if gpu.OEM != nil {
-			serial := strings.ToLower(strings.TrimSpace(pointer.Value(gpu.OEM.SerialNumber)))
+			serial := strings.ToLower(strings.TrimSpace(models.Value(gpu.OEM.SerialNumber)))
 			if serial != "" && serial != "n/a" && serial != "not available" {
 				identities["serial:"+serial] = true
 			}
@@ -102,7 +101,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 			return err
 		}
 		if metrics.PowerWatts != nil && metrics.PowerWatts.Reading != nil {
-			gpu.PowerWatts = pointer.Ptr(fmt.Sprint(*metrics.PowerWatts.Reading))
+			gpu.PowerWatts = models.Ptr(fmt.Sprint(*metrics.PowerWatts.Reading))
 		}
 		return nil
 	}
@@ -131,8 +130,8 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 				return nil, err
 			}
 			for _, processor := range processors {
-				kind := strings.ToLower(pointer.Value(processor.ProcessorType))
-				if kind != "gpu" && !(kind == "accelerator" && strings.Contains(strings.ToLower(pointer.Value(processor.Name)+pointer.Value(processor.Model)), "gpu")) {
+				kind := strings.ToLower(models.Value(processor.ProcessorType))
+				if kind != "gpu" && !(kind == "accelerator" && strings.Contains(strings.ToLower(models.Value(processor.Name)+models.Value(processor.Model)), "gpu")) {
 					continue
 				}
 				gpu := models.Gpu{ODataID: processor.ODataID, ID: processor.ID, Name: processor.Name, Manufacturer: processor.Manufacturer, Model: processor.Model, Version: processor.FirmwareVersion}
@@ -140,7 +139,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 					gpu.OEM = &models.GpuOEM{SerialNumber: processor.SerialNumber}
 				}
 				if processor.TdpWatts != nil {
-					gpu.PowerWatts = pointer.Ptr(fmt.Sprint(*processor.TdpWatts))
+					gpu.PowerWatts = models.Ptr(fmt.Sprint(*processor.TdpWatts))
 				}
 				var links []models.Link
 				if processor.Links != nil {
@@ -171,7 +170,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 							gpu.Version = function.Version
 						}
 						if gpu.PowerWatts == nil && function.PowerWatts != nil {
-							gpu.PowerWatts = pointer.Ptr(fmt.Sprint(*function.PowerWatts))
+							gpu.PowerWatts = models.Ptr(fmt.Sprint(*function.PowerWatts))
 						}
 					}
 				}
@@ -190,7 +189,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 				}
 				return nil, err
 			}
-			devices[pointer.Value(device.ODataID)] = *device
+			devices[models.Value(device.ODataID)] = *device
 		}
 		if system.Links != nil {
 			for _, chassisLink := range system.Links.Chassis {
@@ -201,7 +200,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 					}
 					return nil, err
 				}
-				items, err := c.GetPCIeDevices(ctx, pointer.Value(chassis.ODataID))
+				items, err := c.GetPCIeDevices(ctx, models.Value(chassis.ODataID))
 				if err != nil {
 					if errors.Is(err, sdkerrors.ErrNotFound) {
 						continue
@@ -209,7 +208,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 					return nil, err
 				}
 				for _, device := range items {
-					devices[pointer.Value(device.ODataID)] = device
+					devices[models.Value(device.ODataID)] = device
 				}
 			}
 		}
@@ -228,7 +227,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 			return nil, err
 		}
 		for _, item := range chassis {
-			items, err := c.GetPCIeDevices(ctx, pointer.Value(item.ODataID))
+			items, err := c.GetPCIeDevices(ctx, models.Value(item.ODataID))
 			if err != nil {
 				if errors.Is(err, sdkerrors.ErrNotFound) {
 					continue
@@ -236,7 +235,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 				return nil, err
 			}
 			for _, device := range items {
-				devices[pointer.Value(device.ODataID)] = device
+				devices[models.Value(device.ODataID)] = device
 			}
 		}
 	}
@@ -247,7 +246,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 	slices.Sort(keys)
 	for _, key := range keys {
 		device := devices[key]
-		isGPU := strings.EqualFold(pointer.Value(device.DeviceType), "gpu") || strings.Contains(strings.ToLower(pointer.Value(device.Name)), "gpu")
+		isGPU := strings.EqualFold(models.Value(device.DeviceType), "gpu") || strings.Contains(strings.ToLower(models.Value(device.Name)), "gpu")
 		var links []models.Link
 		if device.Links != nil {
 			links = append(links, device.Links.Processors...)
@@ -262,7 +261,7 @@ func (c *Client) GetGPUs(ctx context.Context, systemID ...string) ([]models.Gpu,
 			return nil, err
 		}
 		for _, function := range functions {
-			class := strings.ReplaceAll(strings.ToLower(pointer.Value(function.DeviceClass)), " ", "")
+			class := strings.ReplaceAll(strings.ToLower(models.Value(function.DeviceClass)), " ", "")
 			if slices.Contains([]string{"displaycontroller", "processingaccelerators", "coprocessor"}, class) {
 				isGPU = true
 			}

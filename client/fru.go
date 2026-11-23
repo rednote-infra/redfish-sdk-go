@@ -9,7 +9,6 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func (c *Client) GetFRUService(ctx context.Context, chassisID ...string) ([]Object, error) {
@@ -76,10 +75,10 @@ func (c *Client) GetSystemFRU(ctx context.Context, systemID ...string) (*models.
 				for _, key := range keys {
 					entry := info.Entries[key]
 					if entry.Board != nil && strings.Contains(strings.ToUpper(key), wanted) {
-						if pointer.Value(entry.Board.ProductName) == "" && entry.Product != nil {
+						if models.Value(entry.Board.ProductName) == "" && entry.Product != nil {
 							entry.Board.ProductName = entry.Product.Name
 						}
-						return &models.Fru{ODataID: pointer.Ptr(uri), Board: entry.Board, Chassis: entry.Chassis, Product: entry.Product}, nil
+						return &models.Fru{ODataID: models.Ptr(uri), Board: entry.Board, Chassis: entry.Chassis, Product: entry.Product}, nil
 					}
 				}
 			}
@@ -97,7 +96,7 @@ func (c *Client) GetSystemFRU(ctx context.Context, systemID ...string) (*models.
 	}
 	if system.Links != nil {
 		for _, link := range system.Links.Chassis {
-			items, err := c.GetFRUService(ctx, pointer.Value(link.ODataID))
+			items, err := c.GetFRUService(ctx, models.Value(link.ODataID))
 			if err != nil {
 				if errors.Is(err, sdkerrors.ErrNotFound) {
 					continue

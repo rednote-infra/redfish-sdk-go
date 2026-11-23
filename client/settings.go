@@ -10,7 +10,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -143,7 +142,7 @@ func (c *Client) SetBootOptionEnabled(ctx context.Context, id string, enabled bo
 	if err != nil {
 		return nil, err
 	}
-	return c.patchWithETag(ctx, pointer.Value(option.ODataID), Object{"BootOptionEnabled": enabled})
+	return c.patchWithETag(ctx, models.Value(option.ODataID), Object{"BootOptionEnabled": enabled})
 }
 
 type BootOptions struct{ SystemID, Mode, Enabled string }
@@ -169,7 +168,7 @@ func (c *Client) ChangeBootSource(ctx context.Context, target string, options Bo
 	if !slices.Contains([]string{BootOverrideOnce, BootOverrideContinuous, BootOverrideDisabled}, enabled) {
 		return nil, errors.New("unsupported boot override enablement")
 	}
-	return c.patchWithETag(ctx, pointer.Value(system.ODataID), Object{wire.FieldBoot: Object{"BootSourceOverrideTarget": target, "BootSourceOverrideMode": mode, "BootSourceOverrideEnabled": enabled}})
+	return c.patchWithETag(ctx, models.Value(system.ODataID), Object{wire.FieldBoot: Object{"BootSourceOverrideTarget": target, "BootSourceOverrideMode": mode, "BootSourceOverrideEnabled": enabled}})
 }
 
 type ResetOptions struct {
@@ -186,11 +185,11 @@ func (c *Client) Reset(ctx context.Context, resetType string, options ResetOptio
 		return nil, errors.New("system does not advertise reset action")
 	}
 	action := system.Actions.ComputerSystemReset
-	if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), wire.FieldResetType, resetType, action.ResetTypeAllowableValues); err != nil {
+	if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), wire.FieldResetType, resetType, action.ResetTypeAllowableValues); err != nil {
 		return nil, err
 	}
 	if !options.SkipPowerStateCheck {
-		power := pointer.Value(system.PowerState)
+		power := models.Value(system.PowerState)
 		if power != "" {
 			allowed := map[string][]string{ResetOn: {wire.PowerStateOff}, ResetForceOff: {wire.PowerStateOn, wire.PowerStatePoweringOn, wire.PowerStatePoweringOff}, ResetGracefulShutdown: {wire.PowerStateOn}, ResetGracefulRestart: {wire.PowerStateOn}, ResetForceRestart: {wire.PowerStateOn}, ResetPowerCycle: {wire.PowerStateOn, wire.PowerStateOff}}
 			if states, ok := allowed[resetType]; ok && !slices.Contains(states, power) {
@@ -198,7 +197,7 @@ func (c *Client) Reset(ctx context.Context, resetType string, options ResetOptio
 			}
 		}
 	}
-	return c.postOperation(ctx, pointer.Value(action.Target), Object{wire.FieldResetType: resetType})
+	return c.postOperation(ctx, models.Value(action.Target), Object{wire.FieldResetType: resetType})
 }
 
 func (c *Client) postOperation(ctx context.Context, uri string, body any) (*models.RedfishResponse, error) {
@@ -226,7 +225,7 @@ func (c *Client) UpdateSecureBoot(ctx context.Context, enabled bool, systemID ..
 			return nil, errors.New("secure boot enablement is not advertised")
 		}
 	}
-	return c.patchWithETag(ctx, pointer.Value(resource.ODataID), Object{"SecureBootEnable": enabled})
+	return c.patchWithETag(ctx, models.Value(resource.ODataID), Object{"SecureBootEnable": enabled})
 }
 
 func (c *Client) ResetSecureBootKeys(ctx context.Context, kind string, systemID ...string) (*models.RedfishResponse, error) {
@@ -234,7 +233,7 @@ func (c *Client) ResetSecureBootKeys(ctx context.Context, kind string, systemID 
 	if err != nil {
 		return nil, err
 	}
-	actions, err := c.resourceActions(ctx, pointer.Value(resource.ODataID))
+	actions, err := c.resourceActions(ctx, models.Value(resource.ODataID))
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,6 @@
 """Export Python SDK model contracts for the dependency-free Go generator.
 
-Usage: PYTHONPATH=/path/to/redfish-python-sdk python3 internal/modelgen/export.py
+Usage: PYTHONPATH=/path/to/redfish-python-sdk python3 scripts/modelgen/export.py
 The Python SDK and pydantic are needed only when refreshing this snapshot.
 """
 
@@ -16,7 +16,6 @@ import typing
 from collections import Counter
 
 import pydantic
-
 import redfish_sdk.models as package
 
 classes = set()
@@ -213,7 +212,7 @@ source = pathlib.Path(package.__file__).resolve().parents[2]
 commit = subprocess.check_output(
     ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
 ).strip()
-(root / "internal/modelgen/schema.json").write_text(
+(root / "scripts/modelgen/schema.json").write_text(
     json.dumps(
         {
             "source": "rednote-infra/redfish-python-sdk",

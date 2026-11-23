@@ -7,7 +7,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 const (
@@ -44,12 +43,12 @@ func (c *Client) consoleAction(ctx context.Context, options ConsoleOptions, name
 	case wire.ActionGraphicalConsoleSetPassword:
 		action = system.Actions.GraphicalConsoleSetPassword
 	}
-	if action == nil || pointer.Value(action.Target) == "" {
+	if action == nil || models.Value(action.Target) == "" {
 		return nil, errors.New("system does not advertise " + name)
 	}
 	if options.ConsoleType != nil {
 		kind := *options.ConsoleType
-		if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), wire.FieldConsoleType, kind, action.ConsoleTypeAllowableValues); err != nil {
+		if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), wire.FieldConsoleType, kind, action.ConsoleTypeAllowableValues); err != nil {
 			return nil, err
 		}
 		var enabled *bool
@@ -105,7 +104,7 @@ func (c *Client) consoleAction(ctx context.Context, options ConsoleOptions, name
 		}
 	}
 	if options.AccessMode != nil {
-		if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), wire.FieldAccessMode, *options.AccessMode, action.AccessModeAllowableValues); err != nil {
+		if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), wire.FieldAccessMode, *options.AccessMode, action.AccessModeAllowableValues); err != nil {
 			return nil, err
 		}
 	}
@@ -142,7 +141,7 @@ func (c *Client) GraphicalConsoleGetOneTimeURL(ctx context.Context, options Cons
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.Post(ctx, pointer.Value(action.Target), consoleBody(options))
+	response, err := c.Post(ctx, models.Value(action.Target), consoleBody(options))
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +157,7 @@ func (c *Client) GraphicalConsoleSetOneTimePassword(ctx context.Context, options
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.Post(ctx, pointer.Value(action.Target), consoleBody(options))
+	response, err := c.Post(ctx, models.Value(action.Target), consoleBody(options))
 	if err != nil {
 		return nil, err
 	}
@@ -179,5 +178,5 @@ func (c *Client) GraphicalConsoleSetPassword(ctx context.Context, consoleType, p
 	if err != nil {
 		return nil, err
 	}
-	return c.postOperation(ctx, pointer.Value(action.Target), consoleBody(options))
+	return c.postOperation(ctx, models.Value(action.Target), consoleBody(options))
 }

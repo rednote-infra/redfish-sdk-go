@@ -9,7 +9,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func hardwareGraph() map[string]string {
@@ -138,7 +137,7 @@ func TestLegacyPowerAndModernFanFallbacks(t *testing.T) {
 			c, _ := newTestClient(t, graphHandler(t, graph))
 			if variant == "legacy-power" {
 				supply, err := c.GetPowerSupply(context.Background(), "legacy-psu")
-				if err != nil || pointer.Value(supply.PowerCapacityWatts) != 1000 {
+				if err != nil || models.Value(supply.PowerCapacityWatts) != 1000 {
 					t.Fatalf("legacy PSU fallback: %v", err)
 				}
 			} else {
@@ -166,7 +165,7 @@ func TestMainboardFallsBackToChassisBoardInfo(t *testing.T) {
 	graph["/system"] = string(body)
 	client, _ := newTestClient(t, graphHandler(t, graph))
 	board, err := client.GetMainboard(context.Background(), "", "")
-	if err != nil || board == nil || pointer.Value(board.PrettyName) != "Chassis board" {
+	if err != nil || board == nil || models.Value(board.PrettyName) != "Chassis board" {
 		t.Fatalf("chassis board fallback: %+v %v", board, err)
 	}
 }

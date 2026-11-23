@@ -10,7 +10,6 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -82,7 +81,7 @@ func (c *Client) GetPCIeDevices(ctx context.Context, chassisID ...string) ([]mod
 		return []models.PCIeDevice{}, nil
 	}
 	var link models.Link
-	if json.Unmarshal(chassis.PCIeDevices, &link) == nil && pointer.Value(link.ODataID) != "" {
+	if json.Unmarshal(chassis.PCIeDevices, &link) == nil && models.Value(link.ODataID) != "" {
 		items, err := linkedCollection[models.PCIeDevice](ctx, c, &link, "PCIeDevices")
 		if errors.Is(err, sdkerrors.ErrNotFound) && chassis.Links != nil {
 			return listLinks[models.PCIeDevice](ctx, c, chassis.Links.PCIeDevices)
@@ -138,7 +137,7 @@ func (c *Client) SetIndicatorLED(ctx context.Context, state string, chassisID ..
 	if err != nil {
 		return nil, err
 	}
-	return c.patchWithETag(ctx, pointer.Value(chassis.ODataID), Object{"IndicatorLED": state})
+	return c.patchWithETag(ctx, models.Value(chassis.ODataID), Object{"IndicatorLED": state})
 }
 
 func (c *Client) SetDriveIndicatorLED(ctx context.Context, uri, state string) (*sdkresponse.Response, error) {
@@ -166,7 +165,7 @@ func (c *Client) GetManufacturer(ctx context.Context, systemID ...string) (strin
 	if err != nil {
 		return "", err
 	}
-	return pointer.Value(system.Manufacturer), nil
+	return models.Value(system.Manufacturer), nil
 }
 
 func (c *Client) GetNetworkPorts(ctx context.Context, interfaceID string, systemID ...string) ([]models.NetworkPort, error) {
@@ -441,9 +440,9 @@ func memberMatches(item any, id string) bool {
 	}
 	switch value := item.(type) {
 	case models.PowerSupply:
-		return pointer.Value(value.MemberID) == id
+		return models.Value(value.MemberID) == id
 	case models.Fan:
-		return pointer.Value(value.MemberID) == id
+		return models.Value(value.MemberID) == id
 	default:
 		return false
 	}

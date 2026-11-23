@@ -11,7 +11,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -227,9 +226,9 @@ func (c *Client) UploadFirmwareFile(ctx context.Context, path string, options Up
 	if err != nil {
 		return nil, err
 	}
-	uri := pointer.Value(service.MultiPartHTTPPushURI)
+	uri := models.Value(service.MultiPartHTTPPushURI)
 	if uri == "" {
-		uri = pointer.Value(service.HTTPPushURI)
+		uri = models.Value(service.HTTPPushURI)
 	}
 	if uri == "" {
 		return nil, errors.New("update service does not advertise a push URI")
@@ -289,16 +288,16 @@ func (c *Client) validateUpdateParameters(ctx context.Context, parameters models
 		requested, supported bool
 		name                 string
 	}{
-		{requested: parameters.Targets != nil, supported: pointer.Value(capabilities.TargetsParameterSupported) || (capabilities.TargetsParameterSupported == nil && (capabilities.AllowableTargets != nil || len(capabilities.AllowableTargetReferenceTypes) > 0)), name: wire.FieldTargets},
-		{requested: parameters.ExcludeTargets != nil, supported: pointer.Value(capabilities.ExcludeTargetsParameterSupported), name: wire.FieldExcludeTargets}, {requested: parameters.ForceUpdate != nil, supported: pointer.Value(capabilities.ForceUpdateParameterSupported), name: wire.FieldForceUpdate},
-		{requested: parameters.Stage != nil, supported: pointer.Value(capabilities.StageParameterSupported) || (capabilities.StageParameterSupported == nil && capabilities.AllowableStaging != nil), name: wire.FieldStage}, {requested: parameters.LocalImage != nil, supported: pointer.Value(capabilities.LocalImageParameterSupported), name: wire.FieldLocalImage}}
+		{requested: parameters.Targets != nil, supported: models.Value(capabilities.TargetsParameterSupported) || (capabilities.TargetsParameterSupported == nil && (capabilities.AllowableTargets != nil || len(capabilities.AllowableTargetReferenceTypes) > 0)), name: wire.FieldTargets},
+		{requested: parameters.ExcludeTargets != nil, supported: models.Value(capabilities.ExcludeTargetsParameterSupported), name: wire.FieldExcludeTargets}, {requested: parameters.ForceUpdate != nil, supported: models.Value(capabilities.ForceUpdateParameterSupported), name: wire.FieldForceUpdate},
+		{requested: parameters.Stage != nil, supported: models.Value(capabilities.StageParameterSupported) || (capabilities.StageParameterSupported == nil && capabilities.AllowableStaging != nil), name: wire.FieldStage}, {requested: parameters.LocalImage != nil, supported: models.Value(capabilities.LocalImageParameterSupported), name: wire.FieldLocalImage}}
 	for _, flag := range flags {
 		if flag.requested && !flag.supported {
 			return fmt.Errorf("update capabilities do not advertise %s support", flag.name)
 		}
 	}
 	for _, target := range parameters.Targets {
-		if pointer.Value(parameters.Stage) {
+		if models.Value(parameters.Stage) {
 			if !slices.Contains(capabilities.AllowableStaging, target) {
 				return errors.New("staging target is not advertised")
 			}
@@ -311,7 +310,7 @@ func (c *Client) validateUpdateParameters(ctx context.Context, parameters models
 			if err = c.Get(ctx, resolved.String(), &entity); err != nil {
 				return err
 			}
-			typ := strings.TrimPrefix(pointer.Value(entity.ODataType), "#")
+			typ := strings.TrimPrefix(models.Value(entity.ODataType), "#")
 			prefix := strings.Split(typ, ".")[0]
 			if !slices.Contains(capabilities.AllowableTargetReferenceTypes, prefix) {
 				return errors.New("update target reference type is not advertised")
@@ -368,7 +367,7 @@ func (c *Client) StageUpdate(ctx context.Context, request UpdateRequest) (*model
 	if request.Parameters != nil {
 		parameters = *request.Parameters
 	}
-	parameters.Stage = pointer.Ptr(true)
+	parameters.Stage = models.Ptr(true)
 	if parameters.Targets == nil {
 		parameters.Targets = request.Targets
 	}
@@ -395,7 +394,7 @@ func (c *Client) ActivateSoftware(ctx context.Context, targets []string) (*model
 		if _, err := c.resolve(target, c.base.String()+"/"); err != nil {
 			return nil, err
 		}
-		links = append(links, models.Link{ODataID: pointer.Ptr(target)})
+		links = append(links, models.Link{ODataID: models.Ptr(target)})
 	}
 	action, err := c.updateAction(ctx, wire.ActionActivate)
 	if err != nil {

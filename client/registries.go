@@ -18,7 +18,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -51,8 +50,8 @@ func parseRegistryVersion(value string) ([3]int, bool) {
 }
 
 func registryIdentity(registry models.Registry) (string, [3]int) {
-	prefix := pointer.Value(registry.RegistryPrefix)
-	version, _ := parseRegistryVersion(pointer.Value(registry.RegistryVersion))
+	prefix := models.Value(registry.RegistryPrefix)
+	version, _ := parseRegistryVersion(models.Value(registry.RegistryVersion))
 	parts := strings.Split(prefix, ".")
 	if len(parts) >= 3 {
 		if parsed, ok := parseRegistryVersion(strings.Join(parts[1:], ".")); ok {
@@ -123,9 +122,9 @@ func registryLocation(registry *models.Registry, language string) (*models.Regis
 	}
 	locations := slices.Clone(registry.Location)
 	rank := func(location models.RegistryLocation) int {
-		candidate := strings.ToLower(pointer.Value(location.Language))
+		candidate := strings.ToLower(models.Value(location.Language))
 		requested := strings.ToLower(language)
-		if pointer.Value(location.URI) == "" && pointer.Value(location.PublicationURI) == "" {
+		if models.Value(location.URI) == "" && models.Value(location.PublicationURI) == "" {
 			return 5
 		}
 		if requested != "" && candidate == requested {
@@ -143,7 +142,7 @@ func registryLocation(registry *models.Registry, language string) (*models.Regis
 		if rank(a) != rank(b) {
 			return rank(a) - rank(b)
 		}
-		return strings.Compare(pointer.Value(a.Language)+pointer.Value(a.URI), pointer.Value(b.Language)+pointer.Value(b.URI))
+		return strings.Compare(models.Value(a.Language)+models.Value(a.URI), models.Value(b.Language)+models.Value(b.URI))
 	})
 	return &locations[0], nil
 }
@@ -203,7 +202,7 @@ func (c *Client) messageRegistry(ctx context.Context, registry *models.Registry,
 		return nil, err
 	}
 	var last error
-	for _, source := range []string{pointer.Value(location.URI), pointer.Value(location.PublicationURI)} {
+	for _, source := range []string{models.Value(location.URI), models.Value(location.PublicationURI)} {
 		if source == "" {
 			continue
 		}
@@ -221,11 +220,11 @@ func (c *Client) messageRegistry(ctx context.Context, registry *models.Registry,
 			last = err
 			continue
 		}
-		if strings.Contains(pointer.Value(document.ODataType), "AttributeRegistry") || document.Extra["RegistryEntries"] != nil {
+		if strings.Contains(models.Value(document.ODataType), "AttributeRegistry") || document.Extra["RegistryEntries"] != nil {
 			return nil, errors.New("attribute registry cannot be used as a message registry")
 		}
 		prefix, version := registryIdentity(*registry)
-		if pointer.Value(document.RegistryPrefix) != "" && !strings.EqualFold(pointer.Value(document.RegistryPrefix), prefix) {
+		if models.Value(document.RegistryPrefix) != "" && !strings.EqualFold(models.Value(document.RegistryPrefix), prefix) {
 			return nil, errors.New("registry document prefix differs from advertised metadata")
 		}
 		if document.RegistryVersion != nil {
@@ -269,7 +268,7 @@ func (c *Client) ResolveMessage(ctx context.Context, messageID string, args []an
 		if err != nil {
 			return nil, err
 		}
-		if next := pointer.Value(document.ReferencedRegistry); next != "" {
+		if next := models.Value(document.ReferencedRegistry); next != "" {
 			reference = next
 			continue
 		}
@@ -277,7 +276,7 @@ func (c *Client) ResolveMessage(ctx context.Context, messageID string, args []an
 		if !ok {
 			return nil, errors.New("message key is not present in registry")
 		}
-		if next := pointer.Value(definition.ReferencedRegistry); next != "" {
+		if next := models.Value(definition.ReferencedRegistry); next != "" {
 			reference = next
 			continue
 		}
@@ -315,7 +314,7 @@ func clonePointer[T any](value *T) *T {
 	if value == nil {
 		return nil
 	}
-	return pointer.Ptr(*value)
+	return models.Ptr(*value)
 }
 
 func (c *Client) GetAttributeRegistry(ctx context.Context, reference, language string) (*models.AttributeRegistry, error) {
@@ -328,7 +327,7 @@ func (c *Client) GetAttributeRegistry(ctx context.Context, reference, language s
 		return nil, err
 	}
 	var last error
-	for _, source := range []string{pointer.Value(location.URI), pointer.Value(location.PublicationURI)} {
+	for _, source := range []string{models.Value(location.URI), models.Value(location.PublicationURI)} {
 		if source == "" {
 			continue
 		}
@@ -363,7 +362,7 @@ func (c *Client) GetBIOSAttributeRegistry(ctx context.Context, systemID, languag
 	if err != nil {
 		return nil, err
 	}
-	return c.GetAttributeRegistry(ctx, pointer.Value(bios.AttributeRegistry), language)
+	return c.GetAttributeRegistry(ctx, models.Value(bios.AttributeRegistry), language)
 }
 
 func (c *Client) ValidateBIOSAttributes(ctx context.Context, attributes Object, systemID, language string) error {
@@ -390,10 +389,10 @@ func ValidateAttributeValues(registry *models.AttributeRegistry, values Object) 
 		}
 		reason := ""
 		switch {
-		case pointer.Value(definition.ReadOnly) || pointer.Value(definition.Immutable):
+		case models.Value(definition.ReadOnly) || models.Value(definition.Immutable):
 			reason = "is read-only or immutable"
 		default:
-			switch pointer.Value(definition.Type) {
+			switch models.Value(definition.Type) {
 			case "Boolean":
 				if _, ok := value.(bool); !ok {
 					reason = "requires a boolean"
@@ -419,7 +418,7 @@ func ValidateAttributeValues(registry *models.AttributeRegistry, values Object) 
 					reason = "requires a string"
 				} else if (definition.MinLength != nil && int64(utf8.RuneCountInString(text)) < *definition.MinLength) || (definition.MaxLength != nil && int64(utf8.RuneCountInString(text)) > *definition.MaxLength) {
 					reason = "does not satisfy its advertised string length"
-				} else if pointer.Value(definition.Type) == "Enumeration" {
+				} else if models.Value(definition.Type) == "Enumeration" {
 					valid := false
 					for _, entry := range definition.Values {
 						if entry.ValueName == text {
@@ -443,10 +442,10 @@ func ValidateAttributeValues(registry *models.AttributeRegistry, values Object) 
 }
 
 func registryVersionKnown(registry models.Registry) bool {
-	if _, ok := parseRegistryVersion(pointer.Value(registry.RegistryVersion)); ok {
+	if _, ok := parseRegistryVersion(models.Value(registry.RegistryVersion)); ok {
 		return true
 	}
-	for _, name := range []string{pointer.Value(registry.RegistryPrefix), registry.ResourceID()} {
+	for _, name := range []string{models.Value(registry.RegistryPrefix), registry.ResourceID()} {
 		parts := strings.Split(name, ".")
 		if len(parts) >= 3 {
 			if _, ok := parseRegistryVersion(strings.Join(parts[1:], ".")); ok {

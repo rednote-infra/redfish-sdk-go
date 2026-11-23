@@ -11,7 +11,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 type Vendor string
@@ -181,21 +180,21 @@ func (c *Client) vendor(ctx context.Context) (Vendor, error) {
 			if rootErr != nil {
 				return VendorGeneric, rootErr
 			}
-			return DetectVendor(pointer.Value(root.Vendor), root.OEM), nil
+			return DetectVendor(models.Value(root.Vendor), root.OEM), nil
 		}
 		return VendorGeneric, err
 	}
-	return DetectVendor(pointer.Value(system.Manufacturer), system.OEM), nil
+	return DetectVendor(models.Value(system.Manufacturer), system.OEM), nil
 }
 
 type vendorExtractor struct{ vendor Vendor }
 
 func (p vendorExtractor) InletHistoryURI(thermal *models.Thermal) (string, error) {
 	if p.vendor == VendorAMI {
-		if pointer.Value(thermal.ODataID) == "" {
+		if models.Value(thermal.ODataID) == "" {
 			return "", errors.New("Thermal is missing @odata.id")
 		}
-		return strings.TrimRight(pointer.Value(thermal.ODataID), "/") + "/Oem/Ami/InletHistoryTemperature", nil
+		return strings.TrimRight(models.Value(thermal.ODataID), "/") + "/Oem/Ami/InletHistoryTemperature", nil
 	}
 	return requireLink(thermal.InletHistoryTemperature, "InletHistoryTemperature")
 }
@@ -206,7 +205,7 @@ func (p vendorExtractor) FanSpeedRatio(fan *models.Fan) *float64 {
 	}
 	derive := func() *float64 {
 		if fan.Reading != nil && fan.MaxReadingRange != nil && *fan.MaxReadingRange > 0 {
-			return pointer.Ptr(math.Round(float64(*fan.Reading)/float64(*fan.MaxReadingRange)*1000) / 10)
+			return models.Ptr(math.Round(float64(*fan.Reading)/float64(*fan.MaxReadingRange)*1000) / 10)
 		}
 		return nil
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -66,9 +65,9 @@ const (
 
 type Object = sdkclient.Object
 
-func Ptr[T any](value T) *T { return pointer.Ptr[T](value) }
+func Ptr[T any](value T) *T { return models.Ptr[T](value) }
 
-func Value[T any](value *T) (zero T) { return pointer.Value[T](value) }
+func Value[T any](value *T) (zero T) { return models.Value[T](value) }
 
 type (
 	RetryPolicy = sdkclient.RetryPolicy

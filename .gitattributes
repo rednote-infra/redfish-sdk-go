@@ -1,4 +1,4 @@
 models/models_gen.go linguist-generated=true
-internal/modelgen/schema.json linguist-generated=true
+scripts/modelgen/schema.json linguist-generated=true
 testdata/api_parity.json linguist-generated=true
 testdata/python_update_bodies.json linguist-generated=true

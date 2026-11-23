@@ -10,7 +10,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -41,14 +40,14 @@ func (c *Client) sessionsURI(ctx context.Context, attempted ...string) (string, 
 	if err = response.Decode(&root); err != nil {
 		return "", err
 	}
-	if root.Links != nil && root.Links.Sessions != nil && pointer.Value(root.Links.Sessions.ODataID) != "" {
-		return pointer.Value(root.Links.Sessions.ODataID), nil
+	if root.Links != nil && root.Links.Sessions != nil && models.Value(root.Links.Sessions.ODataID) != "" {
+		return models.Value(root.Links.Sessions.ODataID), nil
 	}
 	if root.SessionService == nil {
 		return "", errors.New("service root does not advertise session service")
 	}
 	var service models.SessionService
-	serviceResponse, err := read(pointer.Value(root.SessionService.ODataID))
+	serviceResponse, err := read(models.Value(root.SessionService.ODataID))
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +112,7 @@ func (c *Client) createSession(ctx context.Context, username, password string, i
 	}
 	token, location := r.Header.Get(wire.HeaderAuthToken), r.Header.Get(wire.HeaderLocation)
 	if location == "" {
-		location = pointer.Value(session.ODataID)
+		location = models.Value(session.ODataID)
 	}
 	if location != "" {
 		if _, err = c.resolve(location, r.URL); err != nil {
@@ -123,7 +122,7 @@ func (c *Client) createSession(ctx context.Context, username, password string, i
 	if token == "" {
 		return nil, errors.New("session response is missing X-Auth-Token")
 	}
-	session.XAuthToken = pointer.Ptr(token)
+	session.XAuthToken = models.Ptr(token)
 	if session.ODataID == nil && location != "" {
 		session.ODataID = &location
 	}
@@ -173,5 +172,5 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return c.Delete(ctx, pointer.Value(session.ODataID))
+	return c.Delete(ctx, models.Value(session.ODataID))
 }

@@ -8,7 +8,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -35,7 +34,7 @@ func (c *Client) AddAccount(ctx context.Context, account models.AccountCreate) (
 		}
 	}
 	if result.ODataID == nil && r.Header.Get(wire.HeaderLocation) != "" {
-		result.ODataID = pointer.Ptr(r.Header.Get(wire.HeaderLocation))
+		result.ODataID = models.Ptr(r.Header.Get(wire.HeaderLocation))
 	}
 	return &result, nil
 }
@@ -47,7 +46,7 @@ func (c *Client) findAccount(ctx context.Context, username string) (*models.Acco
 	}
 	var match *models.Account
 	for _, account := range accounts {
-		if pointer.Value(account.UserName) == username {
+		if models.Value(account.UserName) == username {
 			if match != nil {
 				return nil, errors.New("account username is ambiguous")
 			}
@@ -66,7 +65,7 @@ func (c *Client) UpdateAccount(ctx context.Context, username string, account mod
 	if err != nil {
 		return nil, err
 	}
-	return c.patchWithETag(ctx, pointer.Value(current.ODataID), account)
+	return c.patchWithETag(ctx, models.Value(current.ODataID), account)
 }
 
 func (c *Client) DeleteAccount(ctx context.Context, username string) error {
@@ -74,16 +73,16 @@ func (c *Client) DeleteAccount(ctx context.Context, username string) error {
 	if err != nil {
 		return err
 	}
-	return c.Delete(ctx, pointer.Value(current.ODataID))
+	return c.Delete(ctx, models.Value(current.ODataID))
 }
 
 // Subscribe accepts the typed subscription contract, preserving extension fields in Extra.
 func (c *Client) Subscribe(ctx context.Context, subscription models.Subscription) (*models.Subscription, error) {
-	if strings.TrimSpace(pointer.Value(subscription.Destination)) == "" {
+	if strings.TrimSpace(models.Value(subscription.Destination)) == "" {
 		return nil, errors.New("subscription destination must not be empty")
 	}
 	if subscription.Protocol == nil {
-		subscription.Protocol = pointer.Ptr("Redfish")
+		subscription.Protocol = models.Ptr("Redfish")
 	}
 	service, err := c.GetEventService(ctx)
 	if err != nil {
@@ -102,7 +101,7 @@ func (c *Client) Subscribe(ctx context.Context, subscription models.Subscription
 		return nil, err
 	}
 	if result.ODataID == nil && r.Header.Get(wire.HeaderLocation) != "" {
-		result.ODataID = pointer.Ptr(r.Header.Get(wire.HeaderLocation))
+		result.ODataID = models.Ptr(r.Header.Get(wire.HeaderLocation))
 	}
 	return &result, nil
 }
@@ -112,7 +111,7 @@ func (c *Client) DeleteSubscription(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return c.Delete(ctx, pointer.Value(subscription.ODataID))
+	return c.Delete(ctx, models.Value(subscription.ODataID))
 }
 
 func (c *Client) SubmitTestEvent(ctx context.Context, event models.EventRecord) (*models.RedfishResponse, error) {
@@ -120,7 +119,7 @@ func (c *Client) SubmitTestEvent(ctx context.Context, event models.EventRecord) 
 	if err != nil {
 		return nil, err
 	}
-	actions, err := c.resourceActions(ctx, pointer.Value(service.ODataID))
+	actions, err := c.resourceActions(ctx, models.Value(service.ODataID))
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +167,7 @@ func (c *Client) CreatePolicy(ctx context.Context, request PolicyCreate) (*model
 		return nil, err
 	}
 	if result.ODataID == nil && r.Header.Get(wire.HeaderLocation) != "" {
-		result.ODataID = pointer.Ptr(r.Header.Get(wire.HeaderLocation))
+		result.ODataID = models.Ptr(r.Header.Get(wire.HeaderLocation))
 	}
 	return &result, nil
 }
@@ -178,15 +177,15 @@ func (c *Client) UpdatePolicy(ctx context.Context, id string, request PolicyUpda
 	if err != nil {
 		return nil, err
 	}
-	return c.patchWithETag(ctx, pointer.Value(policy.ODataID), request)
+	return c.patchWithETag(ctx, models.Value(policy.ODataID), request)
 }
 
 func (c *Client) EnablePolicy(ctx context.Context, id string) (*sdkresponse.Response, error) {
-	return c.UpdatePolicy(ctx, id, PolicyUpdate{Enabled: pointer.Ptr(true)})
+	return c.UpdatePolicy(ctx, id, PolicyUpdate{Enabled: models.Ptr(true)})
 }
 
 func (c *Client) DisablePolicy(ctx context.Context, id string) (*sdkresponse.Response, error) {
-	return c.UpdatePolicy(ctx, id, PolicyUpdate{Enabled: pointer.Ptr(false)})
+	return c.UpdatePolicy(ctx, id, PolicyUpdate{Enabled: models.Ptr(false)})
 }
 
 func (c *Client) DeletePolicy(ctx context.Context, id string) error {
@@ -194,5 +193,5 @@ func (c *Client) DeletePolicy(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return c.Delete(ctx, pointer.Value(policy.ODataID))
+	return c.Delete(ctx, models.Value(policy.ODataID))
 }

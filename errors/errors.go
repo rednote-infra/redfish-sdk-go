@@ -9,7 +9,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -72,8 +71,8 @@ func NewHTTPError(response *sdkresponse.Response, secrets ...string) *Error {
 	}
 	if strings.TrimSpace(result.Message) == "" {
 		for _, info := range result.ExtendedInfo {
-			if strings.TrimSpace(pointer.Value(info.Message)) != "" {
-				result.Message = pointer.Value(info.Message)
+			if strings.TrimSpace(models.Value(info.Message)) != "" {
+				result.Message = models.Value(info.Message)
 				break
 			}
 		}
@@ -93,7 +92,7 @@ func NewHTTPError(response *sdkresponse.Response, secrets ...string) *Error {
 		result.cause = ErrRateLimit
 	}
 	for _, info := range result.ExtendedInfo {
-		if strings.Contains(pointer.Value(info.MessageID), "PasswordChangeRequired") {
+		if strings.Contains(models.Value(info.MessageID), "PasswordChangeRequired") {
 			result.cause = ErrPasswordChangeRequired
 		}
 	}

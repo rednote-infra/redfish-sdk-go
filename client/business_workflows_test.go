@@ -10,7 +10,6 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func assertWireBody(t *testing.T, r *http.Request, expected Object) {
@@ -90,28 +89,28 @@ func TestAccountEventAndPolicyWorkflows(t *testing.T) {
 			w.WriteHeader(400)
 		}
 	})
-	account, err := c.AddAccount(ctx, models.AccountCreate{UserName: "new-user", RoleID: "ReadOnly", Enabled: pointer.Ptr(false)})
-	if err != nil || pointer.Value(account.ODataID) != "/accounts/new" {
+	account, err := c.AddAccount(ctx, models.AccountCreate{UserName: "new-user", RoleID: "ReadOnly", Enabled: models.Ptr(false)})
+	if err != nil || models.Value(account.ODataID) != "/accounts/new" {
 		t.Fatalf("create account: %v", err)
 	}
-	if _, err = c.UpdateAccount(ctx, "tester", models.AccountPatch{Enabled: pointer.Ptr(false), EmailAddress: pointer.Ptr("")}); err != nil {
+	if _, err = c.UpdateAccount(ctx, "tester", models.AccountPatch{Enabled: models.Ptr(false), EmailAddress: models.Ptr("")}); err != nil {
 		t.Fatal(err)
 	}
 	if err = c.DeleteAccount(ctx, "tester"); err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := c.Subscribe(ctx, models.Subscription{Destination: pointer.Ptr("https://events.invalid/redfish")})
-	if err != nil || pointer.Value(subscription.ODataID) != "/subscriptions/new" {
+	subscription, err := c.Subscribe(ctx, models.Subscription{Destination: models.Ptr("https://events.invalid/redfish")})
+	if err != nil || models.Value(subscription.ODataID) != "/subscriptions/new" {
 		t.Fatalf("subscribe: %v", err)
 	}
 	if err = c.DeleteSubscription(ctx, "one"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = c.SubmitTestEvent(ctx, models.EventRecord{Message: pointer.Ptr("Test message")}); err != nil {
+	if _, err = c.SubmitTestEvent(ctx, models.EventRecord{Message: models.Ptr("Test message")}); err != nil {
 		t.Fatal(err)
 	}
-	policy, err := c.CreatePolicy(ctx, PolicyCreate{ID: "new", Name: "New", TriggerCondition: models.PolicyCondition{Type: pointer.Ptr("Triggered")}, Response: []models.PolicyResponse{{ResponseAction: pointer.Ptr("LogEvent")}}, Enabled: pointer.Ptr(false), OEM: pointer.Ptr(Object{})})
-	if err != nil || pointer.Value(policy.ODataID) != "/policies/new" {
+	policy, err := c.CreatePolicy(ctx, PolicyCreate{ID: "new", Name: "New", TriggerCondition: models.PolicyCondition{Type: models.Ptr("Triggered")}, Response: []models.PolicyResponse{{ResponseAction: models.Ptr("LogEvent")}}, Enabled: models.Ptr(false), OEM: models.Ptr(Object{})})
+	if err != nil || models.Value(policy.ODataID) != "/policies/new" {
 		t.Fatalf("create policy: %v", err)
 	}
 	if _, err = c.EnablePolicy(ctx, "one"); err != nil {
@@ -196,20 +195,20 @@ func TestSystemManagerAndConsoleActions(t *testing.T) {
 	if _, err := c.ResetManager(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.UpdateSerialInterface(ctx, "one", SerialInterfaceUpdate{InterfaceEnabled: pointer.Ptr(false)}); err != nil {
+	if _, err := c.UpdateSerialInterface(ctx, "one", SerialInterfaceUpdate{InterfaceEnabled: models.Ptr(false)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.InsertVirtualMedia(ctx, "one", models.VirtualMediaInsertMediaRequest{Image: "https://images.invalid/os.iso", Inserted: pointer.Ptr(false), TransferMethod: pointer.Ptr("Stream")}); err != nil {
+	if _, err := c.InsertVirtualMedia(ctx, "one", models.VirtualMediaInsertMediaRequest{Image: "https://images.invalid/os.iso", Inserted: models.Ptr(false), TransferMethod: models.Ptr("Stream")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.EjectVirtualMedia(ctx, "one"); err != nil {
 		t.Fatal(err)
 	}
-	console, err := c.GraphicalConsoleGetOneTimeURL(ctx, ConsoleOptions{ConsoleType: pointer.Ptr(ConsoleHTML5), ValidityPeriodSeconds: pointer.Ptr(int64(60))})
+	console, err := c.GraphicalConsoleGetOneTimeURL(ctx, ConsoleOptions{ConsoleType: models.Ptr(ConsoleHTML5), ValidityPeriodSeconds: models.Ptr(int64(60))})
 	if err != nil || console.ConsoleURL != "https://console.invalid/temporary" {
 		t.Fatalf("console URL: %v", err)
 	}
-	if _, err = c.GraphicalConsoleSetOneTimePassword(ctx, ConsoleOptions{ConsoleType: pointer.Ptr(ConsoleVNC)}); err != nil {
+	if _, err = c.GraphicalConsoleSetOneTimePassword(ctx, ConsoleOptions{ConsoleType: models.Ptr(ConsoleVNC)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = c.GraphicalConsoleSetPassword(ctx, ConsoleVNC, "test-only"); err != nil {

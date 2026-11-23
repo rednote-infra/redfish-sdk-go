@@ -10,7 +10,6 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/pointer"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -26,10 +25,10 @@ func (c *Client) ResetManager(ctx context.Context, resetType string, managerID .
 		return nil, errors.New("manager does not advertise reset action")
 	}
 	action := manager.Actions.ManagerReset
-	if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), wire.FieldResetType, resetType, action.ResetTypeAllowableValues); err != nil {
+	if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), wire.FieldResetType, resetType, action.ResetTypeAllowableValues); err != nil {
 		return nil, err
 	}
-	return c.postOperation(ctx, pointer.Value(action.Target), Object{wire.FieldResetType: resetType})
+	return c.postOperation(ctx, models.Value(action.Target), Object{wire.FieldResetType: resetType})
 }
 
 type SerialInterfaceUpdate struct {
@@ -49,7 +48,7 @@ func (c *Client) UpdateSerialInterface(ctx context.Context, id string, patch Ser
 	if patch == (SerialInterfaceUpdate{}) {
 		return nil, errors.New("serial interface update must not be empty")
 	}
-	return c.patchWithETag(ctx, pointer.Value(resource.ODataID), patch)
+	return c.patchWithETag(ctx, models.Value(resource.ODataID), patch)
 }
 
 func findOEMLink(container map[string]json.RawMessage, key string) (string, error) {
@@ -67,11 +66,11 @@ func findOEMLink(container map[string]json.RawMessage, key string) (string, erro
 					continue
 				}
 				var link models.Link
-				if json.Unmarshal(raw, &link) == nil && pointer.Value(link.ODataID) != "" {
-					if found != "" && found != pointer.Value(link.ODataID) {
+				if json.Unmarshal(raw, &link) == nil && models.Value(link.ODataID) != "" {
+					if found != "" && found != models.Value(link.ODataID) {
 						return errors.New("OEM service link is ambiguous")
 					}
-					found = pointer.Value(link.ODataID)
+					found = models.Value(link.ODataID)
 				}
 			}
 		}
@@ -152,10 +151,10 @@ func (c *Client) GetSecurityService(ctx context.Context, managerID ...string) (*
 	if err != nil {
 		return nil, err
 	}
-	if err = requireIdentity(pointer.Value(manager.ODataID)); err != nil {
+	if err = requireIdentity(models.Value(manager.ODataID)); err != nil {
 		return nil, err
 	}
-	return getResource[models.SecurityService](ctx, c, strings.TrimRight(pointer.Value(manager.ODataID), "/")+"/SecurityService")
+	return getResource[models.SecurityService](ctx, c, strings.TrimRight(models.Value(manager.ODataID), "/")+"/SecurityService")
 }
 
 func (c *Client) GetHTTPSCert(ctx context.Context, managerID ...string) (*models.HttpsCert, error) {
@@ -214,16 +213,16 @@ func (c *Client) InsertVirtualMedia(ctx context.Context, mediaID string, request
 	}
 	action := resource.Actions.InsertMedia
 	if request.TransferMethod != nil {
-		if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), "TransferMethod", *request.TransferMethod, action.TransferMethodAllowableValues); err != nil {
+		if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), "TransferMethod", *request.TransferMethod, action.TransferMethodAllowableValues); err != nil {
 			return nil, err
 		}
 	}
 	if request.TransferProtocolType != nil {
-		if err = c.validateActionParameter(ctx, pointer.Value(action.ActionInfo), "TransferProtocolType", *request.TransferProtocolType, action.TransferProtocolTypeAllowableValues); err != nil {
+		if err = c.validateActionParameter(ctx, models.Value(action.ActionInfo), "TransferProtocolType", *request.TransferProtocolType, action.TransferProtocolTypeAllowableValues); err != nil {
 			return nil, err
 		}
 	}
-	return c.postOperation(ctx, pointer.Value(action.Target), request)
+	return c.postOperation(ctx, models.Value(action.Target), request)
 }
 
 func (c *Client) EjectVirtualMedia(ctx context.Context, mediaID string, managerID ...string) (*models.RedfishResponse, error) {
@@ -234,7 +233,7 @@ func (c *Client) EjectVirtualMedia(ctx context.Context, mediaID string, managerI
 	if resource.Actions == nil || resource.Actions.EjectMedia == nil {
 		return nil, errors.New("virtual media does not advertise EjectMedia")
 	}
-	return c.postOperation(ctx, pointer.Value(resource.Actions.EjectMedia.Target), Object{})
+	return c.postOperation(ctx, models.Value(resource.Actions.EjectMedia.Target), Object{})
 }
 
 func (c *Client) GetSystemLogEntries(ctx context.Context, logID string, systemID ...string) ([]models.LogEntry, error) {
@@ -265,7 +264,7 @@ func (c *Client) clearLog(ctx context.Context, service *models.Log) (*models.Red
 	if service.Actions == nil || service.Actions.ClearLog == nil {
 		return nil, errors.New("log service does not advertise ClearLog")
 	}
-	return c.postOperation(ctx, pointer.Value(service.Actions.ClearLog.Target), Object{})
+	return c.postOperation(ctx, models.Value(service.Actions.ClearLog.Target), Object{})
 }
 
 func (c *Client) ClearSystemLog(ctx context.Context, logID string, systemID ...string) (*models.RedfishResponse, error) {
