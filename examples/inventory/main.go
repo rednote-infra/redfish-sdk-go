@@ -7,22 +7,23 @@ import (
 	"os"
 	"time"
 
-	redfish "github.com/rednote-infra/redfish-sdk-go"
+	"github.com/rednote-infra/redfish-sdk-go/client"
+	"github.com/rednote-infra/redfish-sdk-go/pointer"
 )
 
 func main() {
-	client, err := redfish.NewClient(os.Getenv("BMC_IP"), os.Getenv("BMC_USER"), os.Getenv("BMC_PASSWORD"))
+	sdk, err := client.NewClient(os.Getenv("BMC_IP"), os.Getenv("BMC_USER"), os.Getenv("BMC_PASSWORD"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
+	defer sdk.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	systems, err := client.GetSystems(ctx)
+	systems, err := sdk.GetSystems(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for _, system := range systems {
-		fmt.Printf("%s: %s %s (%s)\n", redfish.Value(system.Name), redfish.Value(system.Manufacturer), redfish.Value(system.Model), redfish.Value(system.PowerState))
+		fmt.Printf("%s: %s %s (%s)\n", pointer.Value(system.Name), pointer.Value(system.Manufacturer), pointer.Value(system.Model), pointer.Value(system.PowerState))
 	}
 }

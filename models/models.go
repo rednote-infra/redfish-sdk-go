@@ -47,10 +47,10 @@ type Collection[T any] struct {
 	NextLink        *string `json:"@odata.nextLink,omitempty"`
 }
 
-var fieldCache sync.Map
+var _fieldCache sync.Map
 
 func jsonFields(t reflect.Type) map[string]bool {
-	if cached, ok := fieldCache.Load(t); ok {
+	if cached, ok := _fieldCache.Load(t); ok {
 		return cached.(map[string]bool)
 	}
 	fields := make(map[string]bool, t.NumField())
@@ -60,7 +60,7 @@ func jsonFields(t reflect.Type) map[string]bool {
 			fields[key] = true
 		}
 	}
-	fieldCache.Store(t, fields)
+	_fieldCache.Store(t, fields)
 	return fields
 }
 func decodeExtra(data []byte, dest any) (map[string]json.RawMessage, error) {
