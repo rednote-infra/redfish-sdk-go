@@ -1,0 +1,45 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validation:
+    name: Go validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Verify generated models
+        run: |
+          go generate ./models
+          git diff --exit-code -- models/models_gen.go
+      - name: Static analysis
+        run: go vet ./...
+      - name: Run every offline test with the race detector
+        shell: bash
+        run: |
+          go test -race -json -shuffle=on -count=1 -coverprofile=coverage.out ./... | tee test-results.jsonl
+          go run ./internal/testgate test-results.jsonl
+      - name: Build all packages and examples
+        run: go build ./...
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            test-results.jsonl
+          if-no-files-found: error
