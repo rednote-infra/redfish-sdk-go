@@ -62,10 +62,14 @@ func jsonFields(t reflect.Type) map[string]bool {
 	return fields
 }
 func decodeExtra(data []byte, dest any) (map[string]json.RawMessage, error) {
+	return decodeExtraWith(data, dest, func() error { return json.Unmarshal(data, dest) })
+}
+
+func decodeExtraWith(data []byte, dest any, decode func() error) (map[string]json.RawMessage, error) {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return nil, fmt.Errorf("expected resource object, got null")
 	}
-	if err := json.Unmarshal(data, dest); err != nil {
+	if err := decode(); err != nil {
 		return nil, err
 	}
 	// Only the extension portion is dynamic; known fields decode directly above.

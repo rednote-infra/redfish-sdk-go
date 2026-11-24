@@ -42,9 +42,9 @@ func TestGPUDiscoveryMergesStandardTopology(t *testing.T) {
 func TestResourceDiscoveryBoundsFilteringAndExternalLinks(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/redfish/v1/" {
-			fmt.Fprint(w, `{"@odata.id":"/redfish/v1/","@odata.type":"#ServiceRoot.v1_0_0.ServiceRoot","Systems":{"@odata.id":"/systems"},"External":{"@odata.id":"https://external.invalid/redfish/v1/"}}`)
+			fmt.Fprint(w, `{"@odata.id":"/redfish/v1/","@odata.type":"#ServiceRoot.v1_0_0.ServiceRoot","Systems":{"@odata.id":"/redfish/v1/Systems"},"External":{"@odata.id":"https://external.invalid/redfish/v1/"}}`)
 		} else {
-			fmt.Fprint(w, `{"@odata.id":"/systems","@odata.type":"#ComputerSystem.v1_0_0.ComputerSystem","PowerState":"On","Root":{"@odata.id":"/redfish/v1/"}}`)
+			fmt.Fprint(w, `{"@odata.id":"/redfish/v1/Systems","@odata.type":"#ComputerSystem.v1_0_0.ComputerSystem","PowerState":"On","Root":{"@odata.id":"/redfish/v1/"}}`)
 		}
 	})
 	index, err := c.DiscoverResources(context.Background(), DiscoveryOptions{})

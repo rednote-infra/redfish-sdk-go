@@ -31,6 +31,7 @@ type PollOptions struct {
 	AllowNotFoundRecovery    bool
 	AllowTaskVisibilityDelay bool
 	initialDelay             time.Duration
+	taskURI                  string
 }
 
 type AsyncOperationError struct {
@@ -47,8 +48,13 @@ func (e *AsyncOperationError) Error() string {
 }
 
 type OperationResult struct {
-	Task     *models.Task
-	Response *sdkresponse.Response
+	InitialHTTPStatus int
+	TaskMonitorURI    string
+	TaskURI           string
+	InitialRetryAfter string
+	MonitorMissing    bool
+	Task              *models.Task
+	Response          *sdkresponse.Response
 }
 
 func taskFailure(task *models.Task) error {
@@ -121,7 +127,18 @@ func (c *Client) WaitForOperation(ctx context.Context, operation *models.Redfish
 		headers.Set(wire.HeaderRetryAfter, retry)
 		options.initialDelay = retryDelay(headers, 0, 0)
 	}
-	return c.pollOperation(ctx, uri, monitor, options)
+	options.taskURI = models.Value(operation.TaskURI)
+	if options.taskURI == "" {
+		options.taskURI = models.Value(operation.ODataID)
+	}
+	result, err := c.pollOperation(ctx, uri, monitor, options)
+	if result != nil {
+		result.InitialHTTPStatus = int(models.Value(operation.HTTPStatus))
+		result.TaskMonitorURI = models.Value(operation.TaskMonitor)
+		result.TaskURI = options.taskURI
+		result.InitialRetryAfter = models.Value(operation.RetryAfter)
+	}
+	return result, err
 }
 
 func (c *Client) pollOperation(ctx context.Context, uri string, monitor bool, options PollOptions) (*OperationResult, error) {
@@ -139,6 +156,20 @@ func (c *Client) pollOperation(ctx context.Context, uri string, monitor bool, op
 	for {
 		response, err := c.Request(ctx, http.MethodGet, uri, nil)
 		if err != nil {
+			if monitor && (sdkerrors.IsStatus(err, http.StatusNotFound) || sdkerrors.IsStatus(err, http.StatusGone)) && options.taskURI != "" {
+				task, verifyErr := getResource[models.Task](ctx, c, options.taskURI)
+				result := &OperationResult{Task: task, Response: response, MonitorMissing: true}
+				if verifyErr != nil {
+					return result, verifyErr
+				}
+				if failure := taskFailure(task); failure != nil {
+					return result, failure
+				}
+				if models.Value(task.TaskState) != TaskCompleted {
+					return result, &AsyncOperationError{Task: task, Response: response, Message: "Task monitor disappeared before terminal task state could be verified"}
+				}
+				return result, nil
+			}
 			retryable := sdkerrors.IsStatus(err, 429) || sdkerrors.IsStatus(err, 503) || (options.AllowNotFoundRecovery && sdkerrors.IsStatus(err, 404))
 			var transport *sdkerrors.TransportError
 			if errors.As(err, &transport) && safeMethod(transport.Method) {

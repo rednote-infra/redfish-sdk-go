@@ -1,6 +1,7 @@
 package redaction
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 )
@@ -21,7 +22,9 @@ func Redact(value any, secrets ...string) (json.RawMessage, error) {
 		return nil, err
 	}
 	var decoded any
-	if err = json.Unmarshal(encoded, &decoded); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err = decoder.Decode(&decoded); err != nil {
 		return nil, err
 	}
 	var visit func(any) any

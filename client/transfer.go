@@ -65,7 +65,7 @@ func (c *Client) streamOnce(ctx context.Context, method, uri string, body io.Rea
 }
 
 func (c *Client) Download(ctx context.Context, uri, outputPath string) (string, error) {
-	response, err := c.stream(ctx, http.MethodGet, uri, nil, "")
+	response, err := c.downloadResponse(ctx, http.MethodGet, uri, nil, "")
 	if err != nil {
 		return "", err
 	}
@@ -77,7 +77,7 @@ func (c *Client) DownloadViaPost(ctx context.Context, uri, outputPath string, bo
 	if err != nil {
 		return "", err
 	}
-	response, err := c.stream(ctx, http.MethodPost, uri, bytes.NewReader(data), "application/json")
+	response, err := c.downloadResponse(ctx, http.MethodPost, uri, bytes.NewReader(data), "application/json")
 	if err != nil {
 		return "", err
 	}
@@ -100,6 +100,9 @@ func saveDownload(response *http.Response, outputPath string) (path string, err 
 	info, statErr := os.Stat(outputPath)
 	if statErr == nil && info.IsDir() {
 		return "", errors.New("output path must name a file")
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0700); err != nil {
+		return "", err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(outputPath), ".redfish-download-*")
 	if err != nil {

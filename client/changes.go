@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,9 +30,13 @@ const (
 )
 
 type ChangeOptions struct {
-	ETag        string
-	IfNoneMatch string
-	Headers     http.Header
+	// Before is a detached preview baseline, not an enforced server precondition.
+	Before any
+	// BeforeProvided distinguishes an explicit null baseline from an absent baseline.
+	BeforeProvided bool
+	ETag           string
+	IfNoneMatch    string
+	Headers        http.Header
 }
 
 type ChangeOperation struct {
@@ -43,15 +48,17 @@ type ChangeOperation struct {
 }
 
 type ChangeValidationIssue struct {
+	Err     error
 	Index   int
 	Message string
 }
 
 type ChangeOperationResult struct {
-	Operation ChangeOperation
-	Status    ChangeStatus
-	Response  *sdkresponse.Response
-	Err       error
+	OutcomeUnknown bool
+	Operation      ChangeOperation
+	Status         ChangeStatus
+	Response       *sdkresponse.Response
+	Err            error
 }
 
 type ChangeSetResult struct {
@@ -88,7 +95,7 @@ func (r *ChangeSetResult) HasUncertainOutcomes() bool {
 		return false
 	}
 	for _, op := range r.Operations {
-		if op.Status == ChangeUncertain {
+		if op.Status == ChangeUncertain || op.OutcomeUnknown {
 			return true
 		}
 	}
@@ -110,7 +117,12 @@ func (r *ChangeSetResult) IsPartial() bool {
 	return success && failure
 }
 
-type CommitOptions struct{ DryRun, SkipETagCheck, ContinueOnError bool }
+type ChangeValidator func(ChangeOperation) error
+
+type CommitOptions struct {
+	DryRun, SkipETagCheck, ContinueOnError bool
+	Validator                              ChangeValidator
+}
 
 // ChangeSet stages immutable request snapshots; it never retries or rolls back mutations.
 type ChangeSet struct {
@@ -118,6 +130,7 @@ type ChangeSet struct {
 	mu         sync.Mutex
 	operations []ChangeOperation
 	committed  bool
+	validating bool
 }
 
 func (c *Client) ChangeSet() *ChangeSet { return &ChangeSet{client: c} }
@@ -125,6 +138,9 @@ func (c *Client) ChangeSet() *ChangeSet { return &ChangeSet{client: c} }
 func (s *ChangeSet) Stage(method, uri string, body any, options ChangeOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.validating {
+		return errors.New("change set cannot be modified during validation")
+	}
 	if s.committed {
 		return errors.New("change set has already been committed")
 	}
@@ -173,7 +189,14 @@ func (s *ChangeSet) Stage(method, uri string, body any, options ChangeOptions) e
 		return errors.New("specify only one conditional validator")
 	}
 
-	s.operations = append(s.operations, ChangeOperation{Method: method, URI: target.RequestURI(), ETag: options.ETag, IfNoneMatch: options.IfNoneMatch, Headers: headers, Body: raw})
+	var before json.RawMessage
+	if options.Before != nil || options.BeforeProvided {
+		before, err = json.Marshal(options.Before)
+		if err != nil {
+			return err
+		}
+	}
+	s.operations = append(s.operations, ChangeOperation{Method: method, URI: target.RequestURI(), ETag: options.ETag, IfNoneMatch: options.IfNoneMatch, Headers: headers, Body: raw, Before: before})
 	return nil
 }
 
@@ -194,22 +217,41 @@ func validETag(value string) bool {
 }
 
 func (s *ChangeSet) Validate() []ChangeValidationIssue {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.validate()
+	return s.ValidateWith(nil)
 }
 
-func (s *ChangeSet) validate() []ChangeValidationIssue {
+// ValidateWith runs caller validation against detached snapshots, without network I/O.
+func (s *ChangeSet) ValidateWith(validator ChangeValidator) []ChangeValidationIssue {
+	s.mu.Lock()
+	if s.validating {
+		s.mu.Unlock()
+		return []ChangeValidationIssue{{Index: 0, Message: "change set is already being validated"}}
+	}
+	s.validating = true
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); s.validating = false; s.mu.Unlock() }()
+	return validateChanges(s.Operations(), validator)
+}
+
+func validateChanges(operations []ChangeOperation, validator ChangeValidator) []ChangeValidationIssue {
 	var issues []ChangeValidationIssue
-	for i, op := range s.operations {
-		if (op.ETag != "" && !validETag(op.ETag)) || (op.IfNoneMatch != "" && !validETag(op.IfNoneMatch)) {
-			issues = append(issues, ChangeValidationIssue{Index: i, Message: "invalid ETag"})
+	for i, op := range operations {
+		var err error
+		switch {
+		case (op.ETag != "" && !validETag(op.ETag)) || (op.IfNoneMatch != "" && !validETag(op.IfNoneMatch)):
+			err = errors.New("invalid ETag")
+		case (op.Method == http.MethodPatch || op.Method == http.MethodPut) && len(op.Body) == 0:
+			err = errors.New("PATCH and PUT changes require an explicit body")
+		case len(op.Body) > 0 && !json.Valid(op.Body):
+			err = errors.New("invalid JSON body")
+		case op.Method == http.MethodDelete && len(op.Body) > 0:
+			err = errors.New("DELETE body is not supported in a change set")
 		}
-		if len(op.Body) > 0 && !json.Valid(op.Body) {
-			issues = append(issues, ChangeValidationIssue{Index: i, Message: "invalid JSON body"})
+		if err == nil && validator != nil {
+			err = validator(op)
 		}
-		if op.Method == http.MethodDelete && len(op.Body) > 0 {
-			issues = append(issues, ChangeValidationIssue{Index: i, Message: "DELETE body is not supported in a change set"})
+		if err != nil {
+			issues = append(issues, ChangeValidationIssue{Index: i, Message: err.Error(), Err: err})
 		}
 	}
 	return issues
@@ -232,7 +274,13 @@ func (s *ChangeSet) Plan(includeSensitive bool) ([]Object, error) {
 	ops := s.Operations()
 	out := make([]Object, 0, len(ops))
 	for i, op := range ops {
-		item := Object{"index": i, "method": op.Method, "uri": op.URI, "etag": op.ETag, "headers": op.Headers}
+		item := Object{"index": i, "method": op.Method, "uri": op.URI, "etag": op.ETag, "headers": op.Headers,
+			"baseline_available": len(op.Before) > 0, "body_present": len(op.Body) > 0}
+		diff, err := changeDiff(op, includeSensitive, s.client.passwordValue(), s.client.tokenSnapshot())
+		if err != nil {
+			return nil, err
+		}
+		item["diff"] = diff
 		if len(op.Body) > 0 {
 			item["body"] = op.Body
 		}
@@ -244,7 +292,9 @@ func (s *ChangeSet) Plan(includeSensitive bool) ([]Object, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err = json.Unmarshal(safe, &item); err != nil {
+			decoder := json.NewDecoder(bytes.NewReader(safe))
+			decoder.UseNumber()
+			if err = decoder.Decode(&item); err != nil {
 				return nil, err
 			}
 		}
@@ -264,6 +314,9 @@ func (s *ChangeSet) ToJSON(includeSensitive bool) ([]byte, error) {
 func (s *ChangeSet) CaptureETags(ctx context.Context, includeBefore bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.validating {
+		return errors.New("change set cannot be modified during validation")
+	}
 	if s.committed {
 		return errors.New("change set has already been committed")
 	}
@@ -310,7 +363,15 @@ func responseETag(r *sdkresponse.Response) (string, error) {
 
 func (s *ChangeSet) Commit(ctx context.Context, options CommitOptions) (*ChangeSetResult, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.validating {
+		s.mu.Unlock()
+		return nil, errors.New("change set is already being validated")
+	}
+	s.validating = true
+	s.mu.Unlock()
+	issues := validateChanges(s.Operations(), options.Validator)
+	s.mu.Lock()
+	defer func() { s.validating = false; s.mu.Unlock() }()
 	result := &ChangeSetResult{DryRun: options.DryRun, Operations: make([]ChangeOperationResult, len(s.operations))}
 	for i, op := range s.operations {
 		snapshot := op
@@ -329,8 +390,8 @@ func (s *ChangeSet) Commit(ctx context.Context, options CommitOptions) (*ChangeS
 	if s.committed {
 		return block(errors.New("change set has already been committed"))
 	}
-	if issues := s.validate(); len(issues) > 0 {
-		return block(fmt.Errorf("change validation failed at operation %d: %s", issues[0].Index, issues[0].Message))
+	if len(issues) > 0 {
+		return block(issues[0].Err)
 	}
 	if options.DryRun {
 		for i := range result.Operations {
@@ -356,7 +417,10 @@ func (s *ChangeSet) Commit(ctx context.Context, options CommitOptions) (*ChangeS
 				return block(err)
 			}
 			if op.IfNoneMatch != "" {
-				if op.IfNoneMatch == "*" || current == op.IfNoneMatch {
+				if op.IfNoneMatch == "*" || strings.TrimPrefix(current, "W/") == strings.TrimPrefix(op.IfNoneMatch, "W/") {
+					return block(sdkerrors.ErrPreconditionFailed)
+				}
+				if current == "" {
 					return block(sdkerrors.ErrPreconditionFailed)
 				}
 				continue
@@ -378,7 +442,7 @@ func (s *ChangeSet) Commit(ctx context.Context, options CommitOptions) (*ChangeS
 		if len(op.Body) > 0 {
 			body = op.Body
 		}
-		response, err := s.client.Request(ctx, op.Method, op.URI, body, RequestOptions{Headers: op.Headers})
+		response, err := s.client.Request(ctx, op.Method, op.URI, body, RequestOptions{Headers: op.Headers, Retry: &RetryPolicy{MaxAttempts: 1, Safety: RetrySafetyDefault}})
 		entry := &result.Operations[i]
 		entry.Response = response
 		entry.Err = err
@@ -387,6 +451,11 @@ func (s *ChangeSet) Commit(ctx context.Context, options CommitOptions) (*ChangeS
 			var transport *sdkerrors.TransportError
 			if errors.As(err, &transport) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				entry.Status = ChangeUncertain
+			}
+			entry.OutcomeUnknown = entry.Status == ChangeUncertain
+			var httpError *sdkerrors.Error
+			if errors.As(err, &httpError) && (httpError.StatusCode >= http.StatusInternalServerError || (httpError.StatusCode >= http.StatusMultipleChoices && httpError.StatusCode < http.StatusBadRequest)) {
+				entry.OutcomeUnknown = true
 			}
 			failures = append(failures, err)
 			stop = !options.ContinueOnError

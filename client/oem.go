@@ -47,14 +47,30 @@ type LogCollectStrategy interface {
 
 // ProviderRegistry is client-scoped. Registering a provider never changes another client.
 type ProviderRegistry struct {
-	mu         sync.RWMutex
-	extractors map[Vendor]Extractor
-	updates    map[Vendor]UpdateStrategy
-	logs       map[Vendor]LogCollectStrategy
+	loadMu         sync.Mutex
+	options        ProviderRegistryOptions
+	explicit       map[providerKey]bool
+	discovered     bool
+	discoveryError error
+	entries        map[providerKey][]ProviderRegistration
+	loaded         map[providerKey]providerInstance
+	failures       map[providerKey]error
+	mu             sync.RWMutex
+	extractors     map[Vendor]Extractor
+	updates        map[Vendor]UpdateStrategy
+	logs           map[Vendor]LogCollectStrategy
 }
 
 func NewProviderRegistry() *ProviderRegistry {
-	r := &ProviderRegistry{extractors: map[Vendor]Extractor{}, updates: map[Vendor]UpdateStrategy{}, logs: map[Vendor]LogCollectStrategy{}}
+	r := &ProviderRegistry{
+		explicit:   map[providerKey]bool{},
+		entries:    map[providerKey][]ProviderRegistration{},
+		loaded:     map[providerKey]providerInstance{},
+		failures:   map[providerKey]error{},
+		extractors: map[Vendor]Extractor{},
+		updates:    map[Vendor]UpdateStrategy{},
+		logs:       map[Vendor]LogCollectStrategy{},
+	}
 	for _, vendor := range []Vendor{VendorGeneric, VendorAMI, VendorZTE, VendorInspur, VendorIEIT, VendorH3C, VendorXFusion, VendorLenovo, VendorNettrix, VendorEnginetech, VendorSmoothcompute} {
 		r.extractors[vendor] = vendorExtractor{vendor: vendor}
 		r.updates[vendor] = vendorUpdate{vendor: vendor}
@@ -70,7 +86,10 @@ func NewProviderRegistry() *ProviderRegistry {
 func (r *ProviderRegistry) Clone() *ProviderRegistry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := NewProviderRegistry()
+	out := NewProviderRegistryWithOptions(r.options)
+	for key, value := range r.explicit {
+		out.explicit[key] = value
+	}
 	for k, v := range r.extractors {
 		out.extractors[k] = v
 	}
@@ -87,8 +106,12 @@ func (r *ProviderRegistry) RegisterExtractor(vendor Vendor, provider Extractor) 
 	if provider == nil {
 		return errors.New("extractor must not be nil")
 	}
+	vendor = providerVendor(vendor)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.explicitRegistration(OEMExtractor, vendor); err != nil {
+		return err
+	}
 	r.extractors[vendor] = provider
 	return nil
 }
@@ -97,8 +120,12 @@ func (r *ProviderRegistry) RegisterUpdate(vendor Vendor, provider UpdateStrategy
 	if provider == nil {
 		return errors.New("update strategy must not be nil")
 	}
+	vendor = providerVendor(vendor)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.explicitRegistration(OEMUpdate, vendor); err != nil {
+		return err
+	}
 	r.updates[vendor] = provider
 	return nil
 }
@@ -107,13 +134,19 @@ func (r *ProviderRegistry) RegisterLogCollect(vendor Vendor, provider LogCollect
 	if provider == nil {
 		return errors.New("log strategy must not be nil")
 	}
+	vendor = providerVendor(vendor)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.explicitRegistration(OEMLogCollect, vendor); err != nil {
+		return err
+	}
 	r.logs[vendor] = provider
 	return nil
 }
 
+// Extractor retains explicit/built-in lookup. ResolveExtractor also discovers optional providers.
 func (r *ProviderRegistry) Extractor(vendor Vendor) Extractor {
+	vendor = providerVendor(vendor)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if p := r.extractors[vendor]; p != nil {
@@ -122,7 +155,9 @@ func (r *ProviderRegistry) Extractor(vendor Vendor) Extractor {
 	return r.extractors[VendorGeneric]
 }
 
+// Update retains explicit/built-in lookup. ResolveUpdate also discovers optional providers.
 func (r *ProviderRegistry) Update(vendor Vendor) UpdateStrategy {
+	vendor = providerVendor(vendor)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if p := r.updates[vendor]; p != nil {
@@ -131,7 +166,9 @@ func (r *ProviderRegistry) Update(vendor Vendor) UpdateStrategy {
 	return r.updates[VendorGeneric]
 }
 
+// LogCollect retains explicit/built-in lookup. ResolveLogCollect also discovers optional providers.
 func (r *ProviderRegistry) LogCollect(vendor Vendor) LogCollectStrategy {
+	vendor = providerVendor(vendor)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if p := r.logs[vendor]; p != nil {
@@ -286,7 +323,11 @@ func (c *Client) GetInletHistoryTemperature(ctx context.Context, chassisID ...st
 			}
 		}
 	}
-	uri, err := c.cfg.providers.Extractor(vendor).InletHistoryURI(thermal)
+	provider, err := c.cfg.providers.ResolveExtractor(vendor)
+	if err != nil {
+		return nil, err
+	}
+	uri, err := provider.InletHistoryURI(thermal)
 	if errors.Is(err, sdkerrors.ErrNotFound) {
 		return nil, nil
 	}

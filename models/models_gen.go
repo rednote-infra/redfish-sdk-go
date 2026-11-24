@@ -1879,6 +1879,8 @@ func (m DnsService) ResourceID() string {
 
 // Drive matches the Python SDK response contract.
 type Drive struct {
+	inferredIndicatorLED          *string
+	inferredIndicatorValue        string
 	ODataID                       *string                    `json:"@odata.id,omitempty"`
 	ODataContext                  *string                    `json:"@odata.context,omitempty"`
 	ODataType                     *string                    `json:"@odata.type,omitempty"`
@@ -1919,12 +1921,17 @@ type Drive struct {
 }
 
 func (m *Drive) UnmarshalJSON(data []byte) error {
-	type plain Drive
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeDrive(data, m)
 	m.Extra = extra
 	return err
 }
-func (m Drive) MarshalJSON() ([]byte, error) { type plain Drive; return encodeExtra(plain(m), m.Extra) }
+func (m Drive) MarshalJSON() ([]byte, error) {
+	type plain Drive
+	if m.IndicatorLed == m.inferredIndicatorLED && m.IndicatorLed != nil && *m.IndicatorLed == m.inferredIndicatorValue {
+		m.IndicatorLed = nil
+	}
+	return encodeExtra(plain(m), m.Extra)
+}
 func (m Drive) ResourceURI() string {
 	if m.ODataID == nil {
 		return ""
@@ -6538,8 +6545,7 @@ type Processor struct {
 }
 
 func (m *Processor) UnmarshalJSON(data []byte) error {
-	type plain Processor
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeProcessor(data, m)
 	m.Extra = extra
 	return err
 }
@@ -6573,8 +6579,7 @@ type ProcessorId struct {
 }
 
 func (m *ProcessorId) UnmarshalJSON(data []byte) error {
-	type plain ProcessorId
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeProcessorID(data, m)
 	m.Extra = extra
 	return err
 }
@@ -8519,8 +8524,7 @@ type SyslogServer struct {
 }
 
 func (m *SyslogServer) UnmarshalJSON(data []byte) error {
-	type plain SyslogServer
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeSyslogServer(data, m)
 	m.Extra = extra
 	return err
 }
@@ -8556,8 +8560,7 @@ type SyslogService struct {
 }
 
 func (m *SyslogService) UnmarshalJSON(data []byte) error {
-	type plain SyslogService
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeSyslogService(data, m)
 	m.Extra = extra
 	return err
 }

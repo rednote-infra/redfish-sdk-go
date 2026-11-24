@@ -154,7 +154,10 @@ func (c *Client) CollectDiagnosticData(ctx context.Context, options DiagnosticOp
 	if err != nil {
 		return nil, err
 	}
-	provider := c.cfg.providers.LogCollect(vendor)
+	provider, err := c.diagnosticProvider(vendor)
+	if err != nil {
+		return nil, err
+	}
 	if lifecycle, ok := provider.(DiagnosticLifecycle); ok {
 		return lifecycle.Collect(ctx, c, options)
 	}
@@ -488,7 +491,11 @@ func (c *Client) DownloadDiagnosticData(ctx context.Context, taskOrEntry any, pa
 		if item == nil {
 			return "", errors.New("diagnostic task must not be nil")
 		}
-		if provider, ok := c.cfg.providers.LogCollect(item.Vendor).(DiagnosticLifecycle); ok {
+		strategy, err := c.diagnosticProvider(item.Vendor)
+		if err != nil {
+			return "", err
+		}
+		if provider, ok := strategy.(DiagnosticLifecycle); ok {
 			return provider.Download(ctx, c, item, path)
 		}
 		return c.downloadDiagnostic(ctx, item, path)
@@ -510,27 +517,44 @@ func (c *Client) DownloadDiagnosticData(ctx context.Context, taskOrEntry any, pa
 	}
 }
 
+type diagnosticArtifact struct {
+	URI    string
+	Method string
+	Body   Object
+}
+
 func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, path string) (string, error) {
+	artifact, err := c.resolveDiagnosticArtifact(ctx, task)
+	if err != nil {
+		return "", err
+	}
+	if artifact.Method == http.MethodPost {
+		return c.DownloadViaPost(ctx, artifact.URI, path, artifact.Body)
+	}
+	return c.Download(ctx, artifact.URI, path)
+}
+
+func (c *Client) resolveDiagnosticArtifact(ctx context.Context, task *DiagnosticTask) (*diagnosticArtifact, error) {
 	if task.DownloadURI != "" {
 		if task.DownloadMethod == http.MethodPost {
 			body := task.DownloadBody
 			if body == nil {
 				body = Object{}
 			}
-			return c.DownloadViaPost(ctx, task.DownloadURI, path, body)
+			return &diagnosticArtifact{URI: task.DownloadURI, Method: http.MethodPost, Body: body}, nil
 		}
-		return c.Download(ctx, task.DownloadURI, path)
+		return &diagnosticArtifact{URI: task.DownloadURI, Method: http.MethodGet}, nil
 	}
 	if task.Task == nil {
-		return "", errors.New("diagnostic task metadata is missing")
+		return nil, errors.New("diagnostic task metadata is missing")
 	}
 	if uri := taskArtifactURI(task); uri != "" {
-		return c.Download(ctx, uri, path)
+		return &diagnosticArtifact{URI: uri, Method: http.MethodGet}, nil
 	}
 	if models.Value(task.Task.ODataID) != "" {
 		fresh, err := getResource[models.Task](ctx, c, models.Value(task.Task.ODataID))
 		if err != nil && !errors.Is(err, sdkerrors.ErrNotFound) {
-			return "", err
+			return nil, err
 		}
 		if fresh != nil {
 			if fresh.Links != nil {
@@ -544,21 +568,21 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 			}
 			task.Task.Extra = fresh.Extra
 			if uri := taskArtifactURI(task); uri != "" {
-				return c.Download(ctx, uri, path)
+				return &diagnosticArtifact{URI: uri, Method: http.MethodGet}, nil
 			}
 		}
 	}
 	if uri := models.Value(task.Task.AdditionalDataURI); uri != "" {
-		return c.Download(ctx, uri, path)
+		return &diagnosticArtifact{URI: uri, Method: http.MethodGet}, nil
 	}
 	if task.Task.Links != nil {
 		for _, link := range task.Task.Links.CreatedResources {
 			entry, err := linkedResource[models.LogEntry](ctx, c, &link, "CreatedResources")
 			if err != nil {
-				return "", err
+				return nil, err
 			}
 			if models.Value(entry.AdditionalDataURI) != "" {
-				return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
+				return &diagnosticArtifact{URI: models.Value(entry.AdditionalDataURI), Method: http.MethodGet}, nil
 			}
 		}
 	}
@@ -567,10 +591,10 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 			if strings.Contains(arg, "/Entries/") {
 				entry, err := getResource[models.LogEntry](ctx, c, arg)
 				if err != nil {
-					return "", err
+					return nil, err
 				}
 				if models.Value(entry.AdditionalDataURI) != "" {
-					return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
+					return &diagnosticArtifact{URI: models.Value(entry.AdditionalDataURI), Method: http.MethodGet}, nil
 				}
 			}
 		}
@@ -578,40 +602,49 @@ func (c *Client) downloadDiagnostic(ctx context.Context, task *DiagnosticTask, p
 	if task.SourceLogServiceURI != "" {
 		service, err := getResource[models.Log](ctx, c, task.SourceLogServiceURI)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		entries, err := linkedCollection[models.LogEntry](ctx, c, service.Entries, "Entries")
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		slices.SortFunc(entries, func(a, b models.LogEntry) int {
 			return strings.Compare(models.Value(b.Created), models.Value(a.Created))
 		})
 		for _, entry := range entries {
 			if models.Value(entry.AdditionalDataURI) != "" {
-				return c.Download(ctx, models.Value(entry.AdditionalDataURI), path)
+				return &diagnosticArtifact{URI: models.Value(entry.AdditionalDataURI), Method: http.MethodGet}, nil
 			}
 		}
 	}
-	return "", errors.New("diagnostic collection did not advertise a downloadable artifact")
+	return nil, errors.New("diagnostic collection did not advertise a downloadable artifact")
 }
 
 func (c *Client) CollectAndDownloadDiagnosticData(ctx context.Context, path string, options CollectDownloadOptions) (string, error) {
+	return collectAndDownloadDiagnostic(ctx, c, options, func(task *DiagnosticTask) (string, error) { return c.DownloadDiagnosticData(ctx, task, path) })
+}
+
+func collectAndDownloadDiagnostic[T any](ctx context.Context, c *Client, options CollectDownloadOptions, download func(*DiagnosticTask) (T, error)) (T, error) {
+	var zero T
 	if options.MaxRetries < 0 || options.RetryBackoff < 0 {
-		return "", errors.New("diagnostic retry options must not be negative")
+		return zero, errors.New("diagnostic retry options must not be negative")
 	}
 	var existing *DiagnosticTask
 	if !options.DisableReuse {
 		vendor, err := c.vendor(ctx)
 		if err != nil {
-			return "", err
+			return zero, err
 		}
-		if provider, ok := c.cfg.providers.LogCollect(vendor).(interface {
+		strategy, err := c.diagnosticProvider(vendor)
+		if err != nil {
+			return zero, err
+		}
+		if provider, ok := strategy.(interface {
 			FindExisting(context.Context, *Client, DiagnosticOptions) (*DiagnosticTask, error)
 		}); ok {
 			existing, err = provider.FindExisting(ctx, c, options.Diagnostic)
 			if err != nil {
-				return "", err
+				return zero, err
 			}
 		}
 	}
@@ -623,30 +656,34 @@ func (c *Client) CollectAndDownloadDiagnosticData(ctx context.Context, path stri
 		if task == nil {
 			task, err = c.CollectDiagnosticData(ctx, options.Diagnostic)
 			if err != nil {
-				return "", err
+				return zero, err
 			}
 		}
-		if provider, ok := c.cfg.providers.LogCollect(task.Vendor).(DiagnosticLifecycle); ok {
+		strategy, loadErr := c.diagnosticProvider(task.Vendor)
+		if loadErr != nil {
+			return zero, loadErr
+		}
+		if provider, ok := strategy.(DiagnosticLifecycle); ok {
 			err = provider.Wait(ctx, c, task, options.Poll)
 		} else {
 			err = c.waitDiagnostic(ctx, task, options.Poll)
 		}
 		if err == nil {
-			return c.DownloadDiagnosticData(ctx, task, path)
+			return download(task)
 		}
 		var failed *AsyncOperationError
 		if !errors.As(err, &failed) || attempt == options.MaxRetries {
-			return "", err
+			return zero, err
 		}
 		delay := options.RetryBackoff
 		if delay == 0 {
 			delay = 30 * time.Second
 		}
 		if err = waitContext(ctx, delay); err != nil {
-			return "", err
+			return zero, err
 		}
 	}
-	return "", errors.New("diagnostic attempts exhausted")
+	return zero, errors.New("diagnostic attempts exhausted")
 }
 
 func (c *Client) collectSystemDiagnostic(ctx context.Context, provider LogCollectStrategy, options DiagnosticOptions) (*DiagnosticTask, error) {
@@ -684,7 +721,11 @@ func (c *Client) WaitForDiagnosticData(ctx context.Context, task *DiagnosticTask
 	if task == nil {
 		return errors.New("diagnostic task must not be nil")
 	}
-	if provider, ok := c.cfg.providers.LogCollect(task.Vendor).(DiagnosticLifecycle); ok {
+	strategy, err := c.diagnosticProvider(task.Vendor)
+	if err != nil {
+		return err
+	}
+	if provider, ok := strategy.(DiagnosticLifecycle); ok {
 		return provider.Wait(ctx, c, task, options)
 	}
 	return c.waitDiagnostic(ctx, task, options)
@@ -823,4 +864,11 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 		return result, nil
 	}
 	return nil, nil
+}
+
+func (c *Client) diagnosticProvider(vendor Vendor) (LogCollectStrategy, error) {
+	if vendor == "" {
+		vendor = VendorGeneric
+	}
+	return c.cfg.providers.ResolveLogCollect(vendor)
 }

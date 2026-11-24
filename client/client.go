@@ -38,12 +38,16 @@ const (
 type Object map[string]any
 
 type RetryPolicy struct {
-	MaxAttempts int
-	Backoff     time.Duration
+	// Safety permits mutation replay only when explicitly set to RetrySafetyIdempotent.
+	Safety             RetrySafety
+	RetryOnReadTimeout bool
+	MaxAttempts        int
+	Backoff            time.Duration
 }
 
 type config struct {
 	client            *http.Client
+	externalClient    *http.Client
 	verifyTLS         bool
 	caFile            string
 	proxy             string
@@ -119,8 +123,8 @@ func WithServiceRoot(path string) Option {
 
 func WithRetry(policy RetryPolicy) Option {
 	return func(c *config) error {
-		if policy.MaxAttempts < 1 || policy.Backoff < 0 {
-			return errors.New("invalid retry policy")
+		if err := validateRetry(policy); err != nil {
+			return err
 		}
 		c.retry = policy
 		return nil
@@ -159,6 +163,7 @@ func WithStrictCollections(strict bool) Option {
 type Client struct {
 	base               *url.URL
 	http               *http.Client
+	externalHTTP       *http.Client
 	cfg                config
 	username, password string
 	mu                 sync.RWMutex
@@ -224,9 +229,13 @@ func NewClient(host, username, password string, options ...Option) (*Client, err
 		hc.Transport = transport
 		hc.Timeout = cfg.timeout
 	}
-	// Redirects are surfaced to the caller and never forward authentication.
+	// Redirects are disabled by default; request-scoped following enforces same-origin URLs.
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	c := &Client{base: base, http: &hc, cfg: cfg, username: username, password: password, mode: cfg.auth, token: cfg.token, sessionURI: cfg.sessionURI, registryCache: make(map[string]*models.MessageRegistry)}
+	externalHTTP, err := newExternalHTTPClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{base: base, http: &hc, externalHTTP: externalHTTP, cfg: cfg, username: username, password: password, mode: cfg.auth, token: cfg.token, sessionURI: cfg.sessionURI, registryCache: make(map[string]*models.MessageRegistry)}
 	if _, err = c.resolve(cfg.serviceRoot, base.String()+"/"); err != nil {
 		return nil, err
 	}
@@ -270,9 +279,16 @@ func (c *Client) resolve(raw, parent string) (*url.URL, error) {
 func (c *Client) tokenSnapshot() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.token }
 
 type RequestOptions struct {
-	Headers http.Header
-	Query   url.Values
-	Retry   *RetryPolicy
+	// Dial/read overrides require an http.Transport; custom RoundTrippers can use context deadlines.
+	ConnectTimeout time.Duration
+	ReadTimeout    time.Duration
+	// AllowRedirects follows same-origin URLs only.
+	AllowRedirects bool
+	// ReturnRedirects exposes unfollowed 3xx responses without changing legacy defaults.
+	ReturnRedirects bool
+	Headers         http.Header
+	Query           url.Values
+	Retry           *RetryPolicy
 }
 
 func (c *Client) Request(ctx context.Context, method, uri string, body any, options ...RequestOptions) (*sdkresponse.Response, error) {
@@ -291,7 +307,7 @@ func (c *Client) Request(ctx context.Context, method, uri string, body any, opti
 	token := c.tokenSnapshot()
 	result, err := c.request(ctx, method, uri, body, token, false, options...)
 	// Only safe reads are replayed after authentication refresh; mutation outcomes may be uncertain.
-	if sdkerrors.IsStatus(err, http.StatusUnauthorized) && c.authenticationMode() == AuthenticationSession && safeMethod(method) {
+	if sdkerrors.IsStatus(err, http.StatusUnauthorized) && c.authenticationMode() == AuthenticationSession && c.canReplay(method, options...) {
 		if refreshErr := c.refresh(ctx, token); refreshErr != nil {
 			return nil, refreshErr
 		}
@@ -337,12 +353,17 @@ func (c *Client) request(ctx context.Context, method, uri string, body any, toke
 	if opt.Retry != nil {
 		policy = *opt.Retry
 	}
-	if policy.MaxAttempts < 1 {
-		return nil, errors.New("retry attempts must be positive")
+	if err := validateRetry(policy); err != nil {
+		return nil, err
 	}
-	if !safeMethod(method) {
+	if !safeMethod(method) && policy.Safety != RetrySafetyIdempotent {
 		policy.MaxAttempts = 1
 	}
+	httpClient, cleanup, err := c.requestClient(opt)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
 	for attempt := 0; attempt < policy.MaxAttempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(data))
 		if err != nil {
@@ -367,16 +388,25 @@ func (c *Client) request(ctx context.Context, method, uri string, body any, toke
 				req.Header.Add(k, v)
 			}
 		}
-		raw, sendErr := c.http.Do(req)
+		raw, sendErr := httpClient.Do(req)
 		if sendErr != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
+			}
+			if policy.RetryOnReadTimeout && attempt+1 < policy.MaxAttempts && isReadTimeout(sendErr) {
+				if err := waitContext(ctx, retryDelay(nil, policy.Backoff, attempt)); err != nil {
+					return nil, err
+				}
+				continue
 			}
 			return nil, &sdkerrors.TransportError{Method: method, URI: target.EscapedPath(), Cause: sendErr}
 		}
 		content, readErr := io.ReadAll(io.LimitReader(raw.Body, _maxJSONBytes+1))
 		closeErr := raw.Body.Close()
 		result := &sdkresponse.Response{StatusCode: raw.StatusCode, Header: raw.Header.Clone(), Body: content, URL: target.String()}
+		if opt.ReturnRedirects && raw.StatusCode >= http.StatusMultipleChoices && raw.StatusCode < http.StatusBadRequest {
+			return result, nil
+		}
 		if raw.StatusCode < 200 || raw.StatusCode >= 300 {
 			secrets := append(redaction.Secrets(data), c.passwordValue(), token, req.Header.Get(wire.HeaderAuthToken), req.Header.Get("Authorization"))
 			rf := sdkerrors.NewHTTPError(result, secrets...)
@@ -390,6 +420,12 @@ func (c *Client) request(ctx context.Context, method, uri string, body any, toke
 			return result, rf
 		}
 		if readErr != nil {
+			if policy.RetryOnReadTimeout && attempt+1 < policy.MaxAttempts && isReadTimeout(readErr) && ctx.Err() == nil {
+				if err := waitContext(ctx, retryDelay(nil, policy.Backoff, attempt)); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			return result, &sdkerrors.TransportError{Method: method, URI: target.EscapedPath(), Cause: readErr}
 		}
 		if closeErr != nil {
@@ -508,6 +544,9 @@ func (c *Client) Close() error {
 	c.sessionURI = ""
 	c.mu.Unlock()
 	defer c.http.CloseIdleConnections()
+	if c.cfg.externalClient == nil {
+		defer c.externalHTTP.CloseIdleConnections()
+	}
 	if token == "" || location == "" {
 		return nil
 	}

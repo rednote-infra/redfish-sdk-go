@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -34,9 +38,11 @@ type ResourceDiscoveryFailure struct {
 }
 
 type ResourceIndex struct {
-	Resources []ResourceDescriptor
-	Failures  []ResourceDiscoveryFailure
-	Truncated bool
+	Excluded      []string
+	LimitsReached []string
+	Resources     []ResourceDescriptor
+	Failures      []ResourceDiscoveryFailure
+	Truncated     bool
 }
 
 func (index *ResourceIndex) IsPartial() bool {
@@ -57,7 +63,7 @@ func (index *ResourceIndex) Types() []string {
 }
 
 func (index *ResourceIndex) Find(odataType string, where Object) *ResourceIndex {
-	out := &ResourceIndex{Failures: slices.Clone(index.Failures), Truncated: index.Truncated}
+	out := &ResourceIndex{Failures: slices.Clone(index.Failures), Truncated: index.Truncated, Excluded: slices.Clone(index.Excluded), LimitsReached: slices.Clone(index.LimitsReached)}
 	for _, resource := range index.Resources {
 		if odataType != "" && resource.ODataType != odataType && !strings.HasSuffix(resource.ODataType, "."+odataType) {
 			continue
@@ -126,6 +132,37 @@ func lookupProperty(value any, path string) (any, bool) {
 	return value, true
 }
 
+const (
+	_discoveryDepthLimit    = "max_depth"
+	_discoveryResourceLimit = "max_resources"
+)
+
+var _resourceType = regexp.MustCompile(`^#[A-Za-z_][A-Za-z_0-9]*(\.[A-Za-z_][A-Za-z_0-9]*)+$`)
+
+func expensiveResource(value string) bool {
+	switch strings.ToLower(value) {
+	case "entries", "tasks", "jsonschemas", "registries", "sessions", "logservices", "logservice", "logservicecollection", "logentry", "logentrycollection", "telemetryservice", "metricreports", "metricreport", "metricreportcollection", "metricreportdefinitions", "metricreportdefinitioncollection", "metricdefinitions", "metricdefinitioncollection", "triggers", "triggercollection":
+		return true
+	}
+	return false
+}
+
+func (c *Client) discoveryURL(link, parent string) (*url.URL, error) {
+	if strings.HasPrefix(link, "//") || strings.Contains(link, "\\") || strings.IndexFunc(link, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return nil, errors.New("invalid discovered resource link")
+	}
+	target, err := c.resolve(link, parent)
+	if err != nil {
+		return nil, err
+	}
+	for _, part := range strings.Split(target.Path, "/") {
+		if part == "." || part == ".." || strings.Contains(part, "\\") || strings.IndexFunc(part, unicode.IsControl) >= 0 {
+			return nil, errors.New("ambiguous discovered resource path")
+		}
+	}
+	return target, nil
+}
+
 func (c *Client) DiscoverResources(ctx context.Context, options DiscoveryOptions) (*ResourceIndex, error) {
 	if options.MaxDepth < 0 || options.MaxResources < 0 {
 		return nil, errors.New("discovery bounds must not be negative")
@@ -139,71 +176,133 @@ func (c *Client) DiscoverResources(ctx context.Context, options DiscoveryOptions
 	if options.Start == "" {
 		options.Start = c.ServiceRoot()
 	}
-	start, err := c.resolve(options.Start, c.base.String()+"/")
+	start, err := c.discoveryURL(options.Start, c.base.String()+"/")
 	if err != nil {
 		return nil, err
+	}
+	scope := strings.TrimRight(start.Path, "/")
+	excludedPath := func(target *url.URL) bool {
+		if strings.TrimRight(target.Path, "/") != scope && !strings.HasPrefix(target.Path, scope+"/") {
+			return true
+		}
+		if !options.IncludeExpensive {
+			for _, part := range strings.Split(target.Path, "/") {
+				if expensiveResource(part) {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	type node struct {
 		uri   string
 		depth int
 	}
-	queue := []node{{start.String(), 0}}
-	seen := map[string]bool{}
+	queue := []node{{uri: start.String(), depth: 0}}
+	scheduled := map[string]bool{start.String(): true}
+	resources := map[string]bool{}
+	excluded := map[string]bool{}
+	limits := map[string]bool{}
+	budget := 1
 	index := &ResourceIndex{Resources: []ResourceDescriptor{}}
-	expensive := map[string]bool{"Entries": true, "MetricReports": true, "Tasks": true, "JsonSchemas": true, "Registries": true, "Sessions": true}
+	defer func() {
+		for uri := range excluded {
+			index.Excluded = append(index.Excluded, uri)
+		}
+		for limit := range limits {
+			index.LimitsReached = append(index.LimitsReached, limit)
+		}
+		slices.Sort(index.Excluded)
+		slices.Sort(index.LimitsReached)
+		index.Truncated = len(limits) > 0
+	}()
 	for len(queue) > 0 {
-		if err = ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return index, err
 		}
 		current := queue[0]
 		queue = queue[1:]
-		if seen[current.uri] {
+		target, _ := url.Parse(current.uri)
+		if excludedPath(target) {
+			excluded[target.RequestURI()] = true
 			continue
 		}
-		seen[current.uri] = true
-		if len(seen) > options.MaxResources {
-			index.Truncated = true
-			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: current.uri, Reason: "max_resources", Err: nil})
-			break
-		}
-		r, err := c.Request(ctx, "GET", current.uri, nil)
+		response, err := c.Request(ctx, http.MethodGet, current.uri, nil)
 		if err != nil {
-			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: current.uri, Reason: "request", Err: err})
-			continue
-		}
-		var document map[string]json.RawMessage
-		if err = r.Decode(&document); err != nil {
-			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: current.uri, Reason: "decode", Err: err})
+			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: target.RequestURI(), Reason: "request", Err: err})
 			continue
 		}
 		var identity struct {
 			URI  string `json:"@odata.id"`
 			Type string `json:"@odata.type"`
 		}
-		if err = r.Decode(&identity); err != nil {
-			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: current.uri, Reason: "identity", Err: err})
+		if err := response.Decode(&identity); err != nil {
+			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: target.RequestURI(), Reason: "identity", Err: err})
 			continue
 		}
-		if identity.URI != "" && strings.HasPrefix(identity.Type, "#") {
-			index.Resources = append(index.Resources, ResourceDescriptor{URI: identity.URI, ODataType: identity.Type, Properties: append(json.RawMessage(nil), r.Body...)})
+		identityURL, err := c.discoveryURL(identity.URI, current.uri)
+		if err != nil || !_resourceType.MatchString(identity.Type) {
+			if err == nil {
+				err = errors.New("resource has missing or invalid @odata.id or @odata.type")
+			}
+			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: target.RequestURI(), Reason: "identity", Err: err})
+			continue
 		}
-		var follow func(map[string]json.RawMessage, string)
-		add := func(link, key string) {
-			target, err := c.resolve(link, current.uri)
+		parts := strings.Split(identity.Type, ".")
+		if excludedPath(identityURL) || (!options.IncludeExpensive && expensiveResource(parts[len(parts)-1])) {
+			excluded[target.RequestURI()] = true
+			continue
+		}
+		if !resources[identityURL.String()] {
+			resources[identityURL.String()] = true
+			index.Resources = append(index.Resources, ResourceDescriptor{URI: identityURL.RequestURI(), ODataType: identity.Type, Properties: append(json.RawMessage(nil), response.Body...)})
+		}
+		var document map[string]json.RawMessage
+		if err := response.Decode(&document); err != nil {
+			index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: target.RequestURI(), Reason: "decode", Err: err})
+			continue
+		}
+		add := func(link string, paging bool) {
+			destination, err := c.discoveryURL(link, current.uri)
 			if err != nil {
+				if budget >= options.MaxResources {
+					limits[_discoveryResourceLimit] = true
+					return
+				}
+				budget++
 				index.Failures = append(index.Failures, ResourceDiscoveryFailure{URI: link, Reason: "link", Err: err})
 				return
 			}
-			if target.String() == current.uri || seen[target.String()] {
+			if scheduled[destination.String()] {
 				return
 			}
-			if current.depth >= options.MaxDepth {
-				index.Truncated = true
+			if excludedPath(destination) {
+				excluded[destination.RequestURI()] = true
 				return
 			}
-			queue = append(queue, node{target.String(), current.depth + 1})
+			depth := current.depth
+			if !paging {
+				depth++
+			}
+			if depth > options.MaxDepth {
+				limits[_discoveryDepthLimit] = true
+				return
+			}
+			if budget >= options.MaxResources {
+				limits[_discoveryResourceLimit] = true
+				return
+			}
+			budget++
+			scheduled[destination.String()] = true
+			next := node{uri: destination.String(), depth: depth}
+			if paging {
+				queue = append([]node{next}, queue...)
+			} else {
+				queue = append(queue, next)
+			}
 		}
-		follow = func(fields map[string]json.RawMessage, parent string) {
+		var follow func(map[string]json.RawMessage, bool)
+		follow = func(fields map[string]json.RawMessage, top bool) {
 			keys := make([]string, 0, len(fields))
 			for key := range fields {
 				keys = append(keys, key)
@@ -214,37 +313,45 @@ func (c *Client) DiscoverResources(ctx context.Context, options DiscoveryOptions
 				if key == "Actions" || key == "target" || strings.Contains(key, "@Redfish.ActionInfo") {
 					continue
 				}
-				if !options.IncludeExpensive && expensive[key] {
+				if !options.IncludeExpensive && expensiveResource(key) {
+					var link struct {
+						URI string `json:"@odata.id"`
+					}
+					if json.Unmarshal(raw, &link) == nil && link.URI != "" {
+						excluded[link.URI] = true
+					}
 					continue
 				}
-				if key == "@odata.id" && parent != "" {
-					var link string
-					if json.Unmarshal(raw, &link) == nil && link != "" {
-						add(link, key)
+				if key == "@odata.id" {
+					if !top {
+						var link string
+						if json.Unmarshal(raw, &link) == nil {
+							add(link, false)
+						}
 					}
 					continue
 				}
 				if key == "Members@odata.nextLink" || key == "@odata.nextLink" {
 					var link string
-					if json.Unmarshal(raw, &link) == nil && link != "" {
-						add(link, key)
+					if json.Unmarshal(raw, &link) == nil {
+						add(link, true)
 					}
 					continue
 				}
 				var object map[string]json.RawMessage
 				if json.Unmarshal(raw, &object) == nil && object != nil {
-					follow(object, key)
+					follow(object, false)
 					continue
 				}
 				var array []map[string]json.RawMessage
 				if json.Unmarshal(raw, &array) == nil {
 					for _, object := range array {
-						follow(object, key)
+						follow(object, false)
 					}
 				}
 			}
 		}
-		follow(document, "")
+		follow(document, true)
 	}
 	return index, nil
 }

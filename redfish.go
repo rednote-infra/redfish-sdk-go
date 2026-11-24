@@ -37,6 +37,7 @@ const (
 
 type (
 	ChangeOptions         = sdkclient.ChangeOptions
+	ChangeValidator       = sdkclient.ChangeValidator
 	ChangeOperation       = sdkclient.ChangeOperation
 	ChangeValidationIssue = sdkclient.ChangeValidationIssue
 	ChangeOperationResult = sdkclient.ChangeOperationResult
@@ -71,12 +72,22 @@ func Value[T any](value *T) (zero T) { return models.Value[T](value) }
 
 type (
 	RetryPolicy = sdkclient.RetryPolicy
+	RetrySafety = sdkclient.RetrySafety
 	Option      = sdkclient.Option
 )
 
 func WithAuthentication(mode AuthenticationMode) Option { return sdkclient.WithAuthentication(mode) }
 
 func WithHTTPClient(client *http.Client) Option { return sdkclient.WithHTTPClient(client) }
+
+func WithExternalHTTPClient(client *http.Client) Option {
+	return sdkclient.WithExternalHTTPClient(client)
+}
+
+const (
+	RetrySafetyDefault    = sdkclient.RetrySafetyDefault
+	RetrySafetyIdempotent = sdkclient.RetrySafetyIdempotent
+)
 
 func WithTLSVerification(verify bool) Option { return sdkclient.WithTLSVerification(verify) }
 
@@ -131,12 +142,13 @@ const (
 )
 
 type (
-	ConsoleOptions         = sdkclient.ConsoleOptions
-	DiagnosticOptions      = sdkclient.DiagnosticOptions
-	DiagnosticTask         = sdkclient.DiagnosticTask
-	CollectDownloadOptions = sdkclient.CollectDownloadOptions
-	DiagnosticLifecycle    = sdkclient.DiagnosticLifecycle
-	DiscoveryProtocol      = discovery.DiscoveryProtocol
+	ConsoleOptions            = sdkclient.ConsoleOptions
+	DiagnosticOptions         = sdkclient.DiagnosticOptions
+	DiagnosticTask            = sdkclient.DiagnosticTask
+	CollectDownloadOptions    = sdkclient.CollectDownloadOptions
+	DiagnosticLifecycle       = sdkclient.DiagnosticLifecycle
+	DiagnosticBytesDownloader = sdkclient.DiagnosticBytesDownloader
+	DiscoveryProtocol         = discovery.DiscoveryProtocol
 )
 
 const (
@@ -200,13 +212,30 @@ const (
 )
 
 type (
-	Extractor          = sdkclient.Extractor
-	UpdateStrategy     = sdkclient.UpdateStrategy
-	LogCollectStrategy = sdkclient.LogCollectStrategy
-	ProviderRegistry   = sdkclient.ProviderRegistry
+	Extractor               = sdkclient.Extractor
+	UpdateStrategy          = sdkclient.UpdateStrategy
+	LogCollectStrategy      = sdkclient.LogCollectStrategy
+	ProviderRegistry        = sdkclient.ProviderRegistry
+	ProviderRegistryOptions = sdkclient.ProviderRegistryOptions
+	ProviderRegistration    = sdkclient.ProviderRegistration
+	ProviderDiscovery       = sdkclient.ProviderDiscovery
+	OEMCategory             = sdkclient.OEMCategory
+	UpdateExecutor          = sdkclient.UpdateExecutor
+	ProviderConflictError   = sdkerrors.ProviderConflictError
+	ProviderLoadError       = sdkerrors.ProviderLoadError
 )
 
 func NewProviderRegistry() *ProviderRegistry { return sdkclient.NewProviderRegistry() }
+
+func NewProviderRegistryWithOptions(options ProviderRegistryOptions) *ProviderRegistry {
+	return sdkclient.NewProviderRegistryWithOptions(options)
+}
+
+const (
+	OEMExtractor  = sdkclient.OEMExtractor
+	OEMUpdate     = sdkclient.OEMUpdate
+	OEMLogCollect = sdkclient.OEMLogCollect
+)
 
 func DetectVendor(manufacturer string, oem *models.Oem) Vendor {
 	return sdkclient.DetectVendor(manufacturer, oem)

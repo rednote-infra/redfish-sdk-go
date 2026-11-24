@@ -139,7 +139,14 @@ func (c *Client) SimpleUpdate(ctx context.Context, request UpdateRequest) (*mode
 			return nil, err
 		}
 	}
-	body, err := c.cfg.providers.Update(vendor).BuildBody(request)
+	provider, err := c.cfg.providers.ResolveUpdate(vendor)
+	if err != nil {
+		return nil, err
+	}
+	if executor, ok := provider.(UpdateExecutor); ok {
+		return executor.Execute(ctx, c, request)
+	}
+	body, err := provider.BuildBody(request)
 	if err != nil {
 		return nil, err
 	}
