@@ -13,6 +13,8 @@ type UpdateRequest = provider.UpdateRequest
 type DiagnosticOptions = provider.DiagnosticOptions
 
 const (
+	VendorHPE           = provider.VendorHPE
+	VendorDell          = provider.VendorDell
 	VendorGeneric       = provider.VendorGeneric
 	VendorAMI           = provider.VendorAMI
 	VendorZTE           = provider.VendorZTE

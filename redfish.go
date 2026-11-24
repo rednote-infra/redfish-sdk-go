@@ -198,6 +198,8 @@ type (
 )
 
 const (
+	VendorHPE           = sdkclient.VendorHPE
+	VendorDell          = sdkclient.VendorDell
 	VendorGeneric       = sdkclient.VendorGeneric
 	VendorAMI           = sdkclient.VendorAMI
 	VendorZTE           = sdkclient.VendorZTE

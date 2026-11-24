@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
 
 	resourceprovider "github.com/rednote-infra/redfish-sdk-go/client/provider"
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
+	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
 	"github.com/rednote-infra/redfish-sdk-go/oem"
@@ -118,6 +120,13 @@ func (p vendorLogCollect) Collect(ctx context.Context, c *Client, options Diagno
 
 func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider LogCollectStrategy, options DiagnosticOptions) (*DiagnosticTask, error) {
 	layout := diagnosticLayout(provider)
+	implementation := diagnosticImplementation(provider)
+	if len(options.DownloadQuery) > 0 {
+		if _, ok := implementation.(resourceprovider.DiagnosticArtifactSource); !ok {
+			return nil, errors.New("diagnostic provider does not support read-only download query parameters")
+		}
+	}
+
 	if layout.SystemScope {
 		task, err := c.collectSystemDiagnostic(ctx, provider, options)
 		if task != nil {
@@ -129,8 +138,32 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 	if err != nil {
 		return nil, err
 	}
+
+	if source, ok := implementation.(resourceprovider.DiagnosticArtifactSource); ok {
+		if _, err := provider.BuildBody(options); err != nil {
+			return nil, err
+		}
+		serviceURI, err := source.DiagnosticServiceURI(manager)
+		if err != nil {
+			return nil, err
+		}
+		response, err := c.Request(ctx, http.MethodGet, serviceURI, nil)
+		if err != nil {
+			return nil, err
+		}
+		artifactURI, err := source.DiagnosticArtifactURI(response.Body, options)
+		if err != nil {
+			return nil, err
+		}
+		target, err := c.resolveArtifactReference(artifactURI, response.URL)
+		if err != nil {
+			return nil, err
+		}
+		return &DiagnosticTask{Vendor: vendor, Task: &models.Task{TaskState: models.Ptr(TaskCompleted)}, Response: response, DownloadURI: target, DownloadMethod: http.MethodGet}, nil
+	}
+	resolver, hasService := implementation.(resourceprovider.DiagnosticServiceResolver)
 	var collectionURI string
-	if !layout.UseManagerActions && layout.ManagerServiceSuffix == "" {
+	if !hasService && !layout.UseManagerActions && layout.ManagerServiceSuffix == "" {
 		collectionURI, err = requireLink(manager.LogServices, "LogServices")
 		if err != nil {
 			return nil, err
@@ -145,7 +178,16 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 
 	var target string
 	var directActions map[string]json.RawMessage
-	if layout.UseManagerActions {
+	if hasService {
+		serviceURI, err := resolver.DiagnosticServiceURI(manager)
+		if err != nil {
+			return nil, err
+		}
+		directActions, err = c.resourceActions(ctx, serviceURI)
+		if err != nil {
+			return nil, err
+		}
+	} else if layout.UseManagerActions {
 		if manager.Actions == nil {
 			return nil, errors.New("manager does not advertise diagnostic actions")
 		}
@@ -156,7 +198,7 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 			return nil, err
 		}
 	}
-	if layout.UseManagerActions || layout.ManagerServiceSuffix != "" {
+	if hasService || layout.UseManagerActions || layout.ManagerServiceSuffix != "" {
 		action, resolveErr := findAction(directActions, layout.CollectAction)
 		if resolveErr != nil && layout.FallbackCollectAction != "" {
 			collectionURI, err = requireLink(manager.LogServices, "LogServices")
@@ -169,12 +211,14 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 			return nil, resolveErr
 		}
 		target = action.Target
-		download, err := findAction(directActions, layout.DownloadAction)
-		if err != nil {
-			return nil, err
+		if layout.DownloadAction != "" {
+			download, err := findAction(directActions, layout.DownloadAction)
+			if err != nil {
+				return nil, err
+			}
+			task.DownloadURI = download.Target
+			task.DownloadMethod = http.MethodPost
 		}
-		task.DownloadURI = download.Target
-		task.DownloadMethod = http.MethodPost
 		if builder, ok := diagnosticImplementation(provider).(resourceprovider.DiagnosticDownloadBuilder); ok {
 			task.DownloadBody = builder.BuildDownloadBody(body)
 		}
@@ -259,6 +303,21 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 		}
 	}
 	task.Task.TaskMonitor = models.Ptr(response.Header.Get(wire.HeaderLocation))
+	if layout.MonitorFromLocation {
+		task.ProgressURI = response.Header.Get(wire.HeaderLocation)
+		if task.ProgressURI == "" {
+			task.ProgressURI = models.Value(task.Task.ODataID)
+		}
+		if task.ProgressURI == "" {
+			return nil, errors.New("diagnostic collection does not advertise a job monitor")
+		}
+		monitor, err := c.resolve(task.ProgressURI, response.URL)
+		if err != nil {
+			return nil, err
+		}
+		task.ProgressURI = monitor.String()
+	}
+
 	if models.Value(task.Task.TaskState) == "" {
 		task.Task.TaskState = models.Ptr(TaskRunning)
 	}
@@ -334,6 +393,14 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 		return err
 	}
 	defer cancel()
+
+	if task.Response != nil {
+		if delay := retryDelay(task.Response.Header, 0, 0); delay > 0 {
+			if err := waitContext(ctx, delay); err != nil {
+				return err
+			}
+		}
+	}
 	observedNew := !task.FreshTrigger
 	for iteration := 0; ; iteration++ {
 
@@ -354,6 +421,10 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 					return err
 				}
 			}
+			if progress.DownloadURI != "" {
+				task.DownloadURI = progress.DownloadURI
+				task.DownloadMethod = http.MethodGet
+			}
 			if progress.DownloadBody != nil {
 				task.DownloadBody = progress.DownloadBody
 			}
@@ -362,9 +433,13 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 		}
 
 		if progress.Failed && (!layout.ProbeBeforeCollect || !task.FreshTrigger || iteration > 0) {
-			return &AsyncOperationError{Task: task.Task, Message: progress.FailureMessage}
+			return &AsyncOperationError{Task: task.Task, Response: progress.Response, Message: redaction.String(progress.FailureMessage, c.passwordValue(), c.tokenSnapshot())}
 		}
-		if err = waitContext(ctx, interval); err != nil {
+		delay := interval
+		if progress.Response != nil {
+			delay = retryDelay(progress.Response.Header, interval, 0)
+		}
+		if err = waitContext(ctx, delay); err != nil {
 			return err
 		}
 	}
@@ -774,7 +849,17 @@ func diagnosticLayout(strategy LogCollectStrategy) resourceprovider.DiagnosticLa
 	return (resourceprovider.DefaultLogCollectStrategy{}).DiagnosticLayout()
 }
 func (c *Client) readDiagnosticProgress(ctx context.Context, strategy LogCollectStrategy, uri string) (resourceprovider.DiagnosticProgress, error) {
-	reader, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticProgressReader)
+	implementation := diagnosticImplementation(strategy)
+	if reader, ok := implementation.(resourceprovider.DiagnosticResponseReader); ok {
+		response, err := c.Request(ctx, http.MethodGet, uri, nil)
+		if err != nil {
+			return resourceprovider.DiagnosticProgress{}, err
+		}
+		progress, err := reader.DecodeDiagnosticResponse(response)
+		progress.Response = response
+		return progress, err
+	}
+	reader, ok := implementation.(resourceprovider.DiagnosticProgressReader)
 	if !ok {
 		return resourceprovider.DiagnosticProgress{}, errors.New("diagnostic provider does not support progress resources")
 	}
@@ -782,5 +867,25 @@ func (c *Client) readDiagnosticProgress(ctx context.Context, strategy LogCollect
 	if err != nil {
 		return resourceprovider.DiagnosticProgress{}, err
 	}
-	return reader.DecodeProgress(response.Body)
+	progress, err := reader.DecodeProgress(response.Body)
+	progress.Response = response
+	return progress, err
+}
+
+func (c *Client) resolveArtifactReference(reference, base string) (string, error) {
+	target, err := url.Parse(reference)
+	if err != nil {
+		return "", err
+	}
+	if !target.IsAbs() {
+		origin, err := url.Parse(base)
+		if err != nil {
+			return "", err
+		}
+		target = origin.ResolveReference(target)
+	}
+	if _, err := validateArtifactURL(target.String()); err != nil {
+		return "", err
+	}
+	return target.String(), nil
 }

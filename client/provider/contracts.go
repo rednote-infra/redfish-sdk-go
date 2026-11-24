@@ -1,13 +1,19 @@
 // Package provider defines resource strategies and standard behavior used by Client and OEM implementations.
 package provider
 
-import "github.com/rednote-infra/redfish-sdk-go/models"
+import (
+	"net/url"
+
+	"github.com/rednote-infra/redfish-sdk-go/models"
+)
 
 type Object = models.Object
 
 type Vendor string
 
 const (
+	VendorHPE           Vendor = "hpe"
+	VendorDell          Vendor = "dell"
 	VendorGeneric       Vendor = "generic"
 	VendorAMI           Vendor = "ami"
 	VendorZTE           Vendor = "zte"
@@ -49,6 +55,8 @@ type UpdateRequest struct {
 }
 
 type DiagnosticOptions struct {
+	// DownloadQuery supplies query parameters for an advertised read-only diagnostic artifact.
+	DownloadQuery                                               url.Values
 	DiagnosticDataType, OEMDiagnosticDataType, LogID, ManagerID string
 	OEMParameters                                               Object
 }

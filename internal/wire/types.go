@@ -30,3 +30,11 @@ const (
 	FieldTemperatureCelsius = "TemperatureCelsius"
 	FieldLegacyTemperature  = "temperature"
 )
+
+const ReadingUnitsPercent = "Percent"
+
+const (
+	OEMNamespaceHPE  = "Hpe"
+	OEMNamespaceHP   = "Hp"
+	OEMNamespaceDell = "Dell"
+)

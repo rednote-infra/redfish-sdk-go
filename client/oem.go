@@ -14,6 +14,8 @@ import (
 type Vendor = provider.Vendor
 
 const (
+	VendorHPE           = oem.VendorHPE
+	VendorDell          = oem.VendorDell
 	VendorGeneric       = oem.VendorGeneric
 	VendorAMI           = oem.VendorAMI
 	VendorZTE           = oem.VendorZTE
@@ -62,7 +64,7 @@ func NewProviderRegistry() *ProviderRegistry {
 		updates:    map[Vendor]UpdateStrategy{},
 		logs:       map[Vendor]LogCollectStrategy{},
 	}
-	for _, vendor := range []Vendor{VendorGeneric, VendorAMI, VendorZTE, VendorInspur, VendorIEIT, VendorH3C, VendorXFusion, VendorLenovo, VendorNettrix, VendorEnginetech, VendorSmoothcompute} {
+	for _, vendor := range []Vendor{VendorGeneric, VendorHPE, VendorDell, VendorAMI, VendorZTE, VendorInspur, VendorIEIT, VendorH3C, VendorXFusion, VendorLenovo, VendorNettrix, VendorEnginetech, VendorSmoothcompute} {
 		r.extractors[vendor] = oem.NewExtractor(vendor)
 		r.updates[vendor] = oem.NewUpdateStrategy(vendor)
 		r.logs[vendor] = builtinLogCollect(vendor)

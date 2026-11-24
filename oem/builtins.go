@@ -3,8 +3,10 @@ package oem
 import (
 	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	"github.com/rednote-infra/redfish-sdk-go/oem/ami"
+	"github.com/rednote-infra/redfish-sdk-go/oem/dell"
 	"github.com/rednote-infra/redfish-sdk-go/oem/enginetech"
 	"github.com/rednote-infra/redfish-sdk-go/oem/h3c"
+	"github.com/rednote-infra/redfish-sdk-go/oem/hpe"
 	"github.com/rednote-infra/redfish-sdk-go/oem/ieit"
 	"github.com/rednote-infra/redfish-sdk-go/oem/inspur"
 	"github.com/rednote-infra/redfish-sdk-go/oem/lenovo"
@@ -17,6 +19,10 @@ import (
 // NewExtractor selects the vendor implementation or the Client default.
 func NewExtractor(vendor Vendor) Extractor {
 	switch vendor {
+	case VendorHPE:
+		return hpe.Extractor{}
+	case VendorDell:
+		return dell.Extractor{}
 	case VendorAMI:
 		return ami.Extractor{}
 	case VendorZTE:
@@ -38,6 +44,10 @@ func NewExtractor(vendor Vendor) Extractor {
 // NewUpdateStrategy selects the vendor implementation or the Client default.
 func NewUpdateStrategy(vendor Vendor) UpdateStrategy {
 	switch vendor {
+	case VendorHPE:
+		return hpe.UpdateStrategy{}
+	case VendorDell:
+		return dell.UpdateStrategy{}
 	case VendorInspur:
 		return inspur.UpdateStrategy{}
 	case VendorZTE:
@@ -59,6 +69,10 @@ func NewUpdateStrategy(vendor Vendor) UpdateStrategy {
 // NewLogCollectStrategy selects the vendor implementation or the Client default.
 func NewLogCollectStrategy(vendor Vendor) LogCollectStrategy {
 	switch vendor {
+	case VendorHPE:
+		return hpe.LogCollectStrategy{}
+	case VendorDell:
+		return dell.LogCollectStrategy{}
 	case VendorZTE:
 		return zte.LogCollectStrategy{}
 	case VendorH3C:
