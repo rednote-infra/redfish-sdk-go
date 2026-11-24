@@ -9,10 +9,10 @@ A native Go SDK for managing server BMCs through the [DMTF Redfish](https://www.
 - **BIOS configuration** — validate attribute values, update pending settings, and schedule when changes take effect.
 - **Firmware updates** — use standard Redfish update actions, multipart uploads, and vendor-specific workflows.
 - **Find resources quickly** — discover standard and OEM resources by type and properties without hardcoding collection paths.
-- **One-call out-of-band log download** — collect diagnostic logs, wait for completion, and download the bundle to a file or memory.
+- **One-call out-of-band log download** — collect diagnostic logs, wait for completion, and download the bundle to a file or memory, including HPE AHS and Dell SupportAssist.
 - **Concurrent automation** — use goroutines and context cancellation to coordinate operations across BMCs.
 
-The SDK uses only the Go standard library. Vendor strategies cover AMI MegaRAC, ZTE, Inspur/IEIT, H3C, xFusion, Lenovo, Nettrix, Enginetech, and smoothcompute, with support varying by operation and BMC capabilities.
+The SDK uses only the Go standard library. Vendor strategies cover HPE iLO, Dell iDRAC, AMI MegaRAC, ZTE, Inspur/IEIT, H3C, xFusion, Lenovo, Nettrix, Enginetech, and smoothcompute, with support varying by operation and BMC capabilities.
 
 ## Installation
 
