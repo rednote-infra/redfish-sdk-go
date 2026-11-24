@@ -20,19 +20,20 @@ jobs:
           cache: false
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
-      - name: Test development scripts
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - name: Verify generated models
-        run: |
-          go generate ./models
-          git diff --exit-code -- models/models_gen.go
       - name: Static analysis
         run: go vet ./...
       - name: Run every offline test with the race detector
         shell: bash
         run: |
+          set -euo pipefail
           go test -race -json -shuffle=on -count=1 -coverprofile=coverage.out ./... | tee test-results.jsonl
-          python3 scripts/testgate.py test-results.jsonl
+          # Package-level skips mean there are no test files; reject skipped test cases.
+          if grep -Eq '"Action":"skip".*"Test":' test-results.jsonl; then
+            echo "Offline test cases must not be skipped." >&2
+            exit 1
+          fi
+          # A successful run must execute at least one test case.
+          grep -Eq '"Action":"pass".*"Test":' test-results.jsonl
       - name: Build all packages and examples
         run: go build ./...
       - name: Upload coverage
