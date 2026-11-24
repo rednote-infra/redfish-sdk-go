@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
@@ -15,14 +16,14 @@ import (
 )
 
 const (
-	TaskNew         = "New"
-	TaskRunning     = "Running"
-	TaskPending     = "Pending"
-	TaskCompleted   = "Completed"
-	TaskException   = "Exception"
-	TaskKilled      = "Killed"
-	TaskCancelled   = "Cancelled"
-	TaskInterrupted = "Interrupted"
+	TaskNew         = models.TaskNew
+	TaskRunning     = models.TaskRunning
+	TaskPending     = models.TaskPending
+	TaskCompleted   = models.TaskCompleted
+	TaskException   = models.TaskException
+	TaskKilled      = models.TaskKilled
+	TaskCancelled   = models.TaskCancelled
+	TaskInterrupted = models.TaskInterrupted
 )
 
 type PollOptions struct {
@@ -34,18 +35,7 @@ type PollOptions struct {
 	taskURI                  string
 }
 
-type AsyncOperationError struct {
-	Task     *models.Task
-	Response *sdkresponse.Response
-	Message  string
-}
-
-func (e *AsyncOperationError) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
-	return "asynchronous operation failed"
-}
+type AsyncOperationError = sdkerrors.AsyncOperationError
 
 type OperationResult struct {
 	InitialHTTPStatus int
@@ -57,32 +47,10 @@ type OperationResult struct {
 	Response          *sdkresponse.Response
 }
 
-func taskFailure(task *models.Task) error {
-	state := models.Value(task.TaskState)
-	switch state {
-	case TaskException, TaskKilled, TaskCancelled, TaskInterrupted:
-		return &AsyncOperationError{Task: task, Message: "Redfish task terminated with state " + state}
-	}
-	if state == TaskCompleted && models.Value(task.TaskStatus) == "Critical" {
-		return &AsyncOperationError{Task: task, Message: "Redfish task completed with critical status"}
-	}
-	return nil
-}
+func taskFailure(task *models.Task) error { return sdkerrors.TaskFailure(task) }
 
 func pollContext(ctx context.Context, options PollOptions) (context.Context, context.CancelFunc, time.Duration, error) {
-	if options.Interval < 0 || options.Timeout < 0 || options.MaxTransientFailures < 0 {
-		return nil, nil, 0, errors.New("poll options must not be negative")
-	}
-	interval := options.Interval
-	if interval == 0 {
-		interval = 5 * time.Second
-	}
-	timeout := options.Timeout
-	if timeout == 0 {
-		timeout = 10 * time.Minute
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	return ctx, cancel, interval, nil
+	return provider.NewPollContext(ctx, provider.PollSettings{Interval: options.Interval, Timeout: options.Timeout, MaxTransientFailures: options.MaxTransientFailures})
 }
 
 func (c *Client) WaitForTask(ctx context.Context, id string, options PollOptions) (*models.Task, error) {

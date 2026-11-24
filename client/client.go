@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
@@ -447,30 +448,10 @@ func retryableStatus(status int) bool {
 }
 
 func retryDelay(headers http.Header, backoff time.Duration, attempt int) time.Duration {
-	if value := headers.Get(wire.HeaderRetryAfter); value != "" {
-		var seconds int
-		if _, err := fmt.Sscanf(value, "%d", &seconds); err == nil && seconds >= 0 {
-			return time.Duration(seconds) * time.Second
-		}
-		if when, err := http.ParseTime(value); err == nil {
-			return max(time.Duration(0), time.Until(when))
-		}
-	}
-	for i := 0; i < attempt && backoff < 30*time.Second; i++ {
-		backoff *= 2
-	}
-	return min(backoff, 30*time.Second)
+	return provider.RetryDelay(headers, backoff, attempt)
 }
-
 func waitContext(ctx context.Context, duration time.Duration) error {
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+	return provider.WaitContext(ctx, duration)
 }
 
 func (c *Client) Get(ctx context.Context, uri string, dest any) error {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rednote-infra/redfish-sdk-go/models"
+	"github.com/rednote-infra/redfish-sdk-go/oem/dell"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -236,5 +237,30 @@ func TestDellMonitorHonorsRetryAfterAndCancellation(t *testing.T) {
 	err := c.WaitForDiagnosticData(ctx, task, PollOptions{Interval: time.Millisecond, Timeout: time.Second})
 	if !errors.Is(err, context.DeadlineExceeded) || reads.Load() != 0 {
 		t.Fatalf("Retry-After ignored: reads=%d err=%v", reads.Load(), err)
+	}
+}
+
+func TestDellOEMServiceUsesExistingClientTransport(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if interopResources(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/manager":
+			fmt.Fprint(w, `{"@odata.id":"/manager","Links":{"Oem":{"Dell":{"DellLCService":{"@odata.id":"/lc"}}}}}`)
+		case "/lc":
+			fmt.Fprint(w, `{"Actions":{"#DellLCService.GetRemoteServicesAPIStatus":{"target":"/status"}}}`)
+		case "/status":
+			if _, _, ok := r.BasicAuth(); !ok {
+				t.Error("OEM service lost Client authentication")
+			}
+			fmt.Fprint(w, `{"Status":"Ready"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	status, err := dell.NewService(c.ResourceClient()).GetRemoteServicesAPIStatus(context.Background())
+	if err != nil || !status.IsReady() {
+		t.Fatalf("OEM service binding: %+v %v", status, err)
 	}
 }
