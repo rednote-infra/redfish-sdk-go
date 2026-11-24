@@ -11,6 +11,8 @@ import (
 )
 
 type Response struct {
+	// NoOp indicates an opt-in update required no HTTP mutation. StatusCode is zero.
+	NoOp       bool
 	StatusCode int
 	Header     http.Header
 	Body       []byte
@@ -27,7 +29,7 @@ func (r *Response) Decode(dest any) error {
 func (r *Response) ETag() string { return r.Header.Get(wire.HeaderETag) }
 
 func (r *Response) Operation() (*models.RedfishResponse, error) {
-	result := &models.RedfishResponse{}
+	result := &models.RedfishResponse{ResponseHeaders: r.Header.Clone()}
 	if err := r.Decode(result); err != nil {
 		return nil, err
 	}

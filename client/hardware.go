@@ -467,3 +467,16 @@ func (c *Client) GetDrives(ctx context.Context, chassisID ...string) ([]models.D
 	}
 	return []models.Drive{}, nil
 }
+
+// GetStandaloneFans returns full modern Fan resources without projecting them onto legacy Thermal fans.
+func (c *Client) GetStandaloneFans(ctx context.Context, chassisID ...string) ([]models.StandaloneFan, error) {
+	chassis, err := c.GetChassis(ctx, chassisID...)
+	if err != nil {
+		return nil, err
+	}
+	subsystem, err := linkedResource[models.ThermalSubsystem](ctx, c, chassis.ThermalSubsystem, "ThermalSubsystem")
+	if err != nil {
+		return nil, err
+	}
+	return linkedCollection[models.StandaloneFan](ctx, c, subsystem.Fans, "Fans")
+}

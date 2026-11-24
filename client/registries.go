@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -393,32 +394,44 @@ func ValidateAttributeValues(registry *models.AttributeRegistry, values Object) 
 			reason = "is read-only or immutable"
 		default:
 			switch models.Value(definition.Type) {
-			case "Boolean":
+			case string(models.AttributeTypeBoolean):
 				if _, ok := value.(bool); !ok {
 					reason = "requires a boolean"
 				}
-			case "Integer":
-				var number int64
-				kind := reflect.Invalid
-				if value != nil {
-					kind = reflect.TypeOf(value).Kind()
-				}
-				switch kind {
-				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-					number = reflect.ValueOf(value).Int()
+			case string(models.AttributeTypeInteger):
+				number := new(big.Int)
+				switch typed := value.(type) {
+				case json.Number:
+					if _, ok := number.SetString(typed.String(), 10); !ok {
+						reason = "requires an integer"
+					}
 				default:
-					reason = "requires an integer"
+					kind := reflect.Invalid
+					if value != nil {
+						kind = reflect.TypeOf(value).Kind()
+					}
+					switch kind {
+					case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+						number.SetInt64(reflect.ValueOf(value).Int())
+					case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+						number.SetUint64(reflect.ValueOf(value).Uint())
+					default:
+						reason = "requires an integer"
+					}
 				}
-				if reason == "" && ((definition.LowerBound != nil && number < *definition.LowerBound) || (definition.UpperBound != nil && number > *definition.UpperBound)) {
-					reason = "is outside its advertised bounds"
+				if reason == "" {
+					lower, upper := definition.ExactLowerBound(), definition.ExactUpperBound()
+					if (lower != nil && number.Cmp(lower) < 0) || (upper != nil && number.Cmp(upper) > 0) {
+						reason = "is outside its advertised bounds"
+					}
 				}
-			case "String", wire.FieldPassword, "Enumeration":
+			case string(models.AttributeTypeString), wire.FieldPassword, string(models.AttributeTypeEnumeration):
 				text, ok := value.(string)
 				if !ok {
 					reason = "requires a string"
 				} else if (definition.MinLength != nil && int64(utf8.RuneCountInString(text)) < *definition.MinLength) || (definition.MaxLength != nil && int64(utf8.RuneCountInString(text)) > *definition.MaxLength) {
 					reason = "does not satisfy its advertised string length"
-				} else if models.Value(definition.Type) == "Enumeration" {
+				} else if models.Value(definition.Type) == string(models.AttributeTypeEnumeration) {
 					valid := false
 					for _, entry := range definition.Values {
 						if entry.ValueName == text {

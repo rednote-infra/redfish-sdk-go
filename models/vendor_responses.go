@@ -84,7 +84,7 @@ func decodeSyslogServer(data []byte, model *SyslogServer) (map[string]json.RawMe
 		Enabled  optionalSwitch  `json:"Enabled"`
 		Port     optionalInteger `json:"Port"`
 	}{plain: (*plain)(model)}
-	extra, err := decodeExtraWith(data, (*plain)(model), func() error {
+	extra, err := decodeExtraWith(data, (*plain)(model), func(data []byte) error {
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return err
 		}
@@ -109,18 +109,24 @@ func decodeSyslogServer(data []byte, model *SyslogServer) (map[string]json.RawMe
 }
 
 func decodeSyslogService(data []byte, model *SyslogService) (map[string]json.RawMessage, error) {
+	model.supermicroSyslog = false
+	model.scalarSyslog = false
 	type plain SyslogService
 	wire := struct {
 		*plain
-		Enabled optionalSwitch `json:"ServiceEnabled"`
+		Enabled           optionalSwitch  `json:"ServiceEnabled"`
+		SupermicroEnabled optionalSwitch  `json:"EnableSyslog"`
+		SupermicroServers json.RawMessage `json:"SyslogServer"`
+		SupermicroPort    *int64          `json:"SyslogPortNumber"`
 	}{plain: (*plain)(model)}
-	return decodeExtraWith(data, (*plain)(model), func() error {
+	return decodeExtraWith(data, (*plain)(model), func(data []byte) error {
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return err
 		}
 		// Unlike optional server entries, an invalid service switch is an invalid contract.
 		var presence struct {
-			Enabled json.RawMessage `json:"ServiceEnabled"`
+			Enabled           json.RawMessage `json:"ServiceEnabled"`
+			SupermicroEnabled json.RawMessage `json:"EnableSyslog"`
 		}
 		if err := json.Unmarshal(data, &presence); err != nil {
 			return err
@@ -129,6 +135,22 @@ func decodeSyslogService(data []byte, model *SyslogService) (map[string]json.Raw
 			return errors.New("ServiceEnabled must be a boolean switch")
 		}
 		model.ServiceEnabled = wire.Enabled.value
+		model.supermicroSyslog = wire.SupermicroEnabled.present || len(wire.SupermicroServers) > 0
+		if !wire.Enabled.present && wire.SupermicroEnabled.present && !bytes.Equal(bytes.TrimSpace(presence.SupermicroEnabled), []byte("null")) && wire.SupermicroEnabled.value == nil {
+			return errors.New("EnableSyslog must be a boolean switch")
+		}
+		if !wire.Enabled.present && wire.SupermicroEnabled.present {
+			model.ServiceEnabled = wire.SupermicroEnabled.value
+		}
+		if len(wire.SupermicroServers) > 0 && !bytes.Equal(bytes.TrimSpace(wire.SupermicroServers), []byte("null")) && model.SyslogServers == nil {
+			var server string
+			if json.Unmarshal(wire.SupermicroServers, &server) == nil {
+				model.scalarSyslog = true
+				model.SyslogServers = []SyslogServer{{Address: Ptr(server), Port: wire.SupermicroPort}}
+			} else if err := json.Unmarshal(wire.SupermicroServers, &model.SyslogServers); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
@@ -141,7 +163,7 @@ func decodeDrive(data []byte, model *Drive) (map[string]json.RawMessage, error) 
 		*plain
 		Location OneOrMany[Location] `json:"Location"`
 	}{plain: (*plain)(model)}
-	return decodeExtraWith(data, (*plain)(model), func() error {
+	return decodeExtraWith(data, (*plain)(model), func(data []byte) error {
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return err
 		}
@@ -173,7 +195,7 @@ func decodeProcessorID(data []byte, model *ProcessorId) (map[string]json.RawMess
 		EffectiveModel  *StringOrNumber `json:"EffectiveModel"`
 		Step            *StringOrNumber `json:"Step"`
 	}{plain: (*plain)(model)}
-	return decodeExtraWith(data, (*plain)(model), func() error {
+	return decodeExtraWith(data, (*plain)(model), func(data []byte) error {
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return err
 		}
@@ -212,4 +234,67 @@ func decodeProcessor(data []byte, model *Processor) (map[string]json.RawMessage,
 		}
 	}
 	return extra, nil
+}
+
+// Preserve the service's OEM wire names when a fetched model is used for a mutation.
+func encodeSyslogService(model SyslogService) ([]byte, error) {
+	type plain SyslogService
+	data, err := encodeExtra(plain(model), model.Extra)
+	if err != nil || !model.supermicroSyslog {
+		return data, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	if enabled, ok := fields["ServiceEnabled"]; ok {
+		fields["EnableSyslog"] = enabled
+		delete(fields, "ServiceEnabled")
+	}
+	delete(fields, "SyslogServers")
+	if model.SyslogServers == nil {
+		if model.NullFields["SyslogServers"] {
+			fields["SyslogServer"] = json.RawMessage("null")
+		}
+		return json.Marshal(fields)
+	}
+	if model.scalarSyslog {
+		if len(model.SyslogServers) != 1 {
+			return nil, errors.New("scalar SyslogServer requires exactly one server")
+		}
+		fields["SyslogServer"], err = json.Marshal(model.SyslogServers[0].Address)
+		if err != nil {
+			return nil, err
+		}
+		fields["SyslogPortNumber"], err = json.Marshal(model.SyslogServers[0].Port)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		servers := make([]json.RawMessage, 0, len(model.SyslogServers))
+		for _, server := range model.SyslogServers {
+			encoded, err := json.Marshal(server)
+			if err != nil {
+				return nil, err
+			}
+			var entry map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &entry); err != nil {
+				return nil, err
+			}
+			if address, ok := entry["Address"]; ok {
+				entry["ServerIP"] = address
+				delete(entry, "Address")
+			}
+			encoded, err = json.Marshal(entry)
+			if err != nil {
+				return nil, err
+			}
+			servers = append(servers, encoded)
+		}
+		fields["SyslogServer"], err = json.Marshal(servers)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(fields)
 }

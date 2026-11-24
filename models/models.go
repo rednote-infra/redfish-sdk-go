@@ -62,14 +62,38 @@ func jsonFields(t reflect.Type) map[string]bool {
 	return fields
 }
 func decodeExtra(data []byte, dest any) (map[string]json.RawMessage, error) {
-	return decodeExtraWith(data, dest, func() error { return json.Unmarshal(data, dest) })
+	return decodeExtraWith(data, dest, func(data []byte) error { return json.Unmarshal(data, dest) })
 }
 
-func decodeExtraWith(data []byte, dest any, decode func() error) (map[string]json.RawMessage, error) {
+func decodeExtraWith(data []byte, dest any, decode func([]byte) error) (map[string]json.RawMessage, error) {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return nil, fmt.Errorf("expected resource object, got null")
 	}
-	if err := decode(); err != nil {
+	// Some BMCs encode ETags as JSON integers. Keep the public string contract
+	// without passing through floating point or changing any other property.
+	var metadata struct {
+		ETag json.RawMessage `json:"@odata.etag"`
+	}
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return nil, err
+	}
+	if raw := bytes.TrimSpace(metadata.ETag); len(raw) > 0 && raw[0] != '"' && !bytes.Equal(raw, []byte("null")) {
+		var number json.Number
+		if err := json.Unmarshal(raw, &number); err != nil {
+			return nil, err
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return nil, err
+		}
+		fields["@odata.etag"], _ = json.Marshal(number.String())
+		var err error
+		data, err = json.Marshal(fields)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := decode(data); err != nil {
 		return nil, err
 	}
 	// Only the extension portion is dynamic; known fields decode directly above.

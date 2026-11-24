@@ -34,9 +34,13 @@ const (
 )
 
 type BIOSOptions struct {
-	SystemID          string
-	ApplyTime         ApplyTime
-	MaintenanceWindow *models.MaintenanceWindow
+	// SkipUnchanged omits attributes already present in pending or current settings.
+	SkipUnchanged bool
+	// RequireAdvertisedApplyTime rejects missing and empty capability lists.
+	RequireAdvertisedApplyTime bool
+	SystemID                   string
+	ApplyTime                  ApplyTime
+	MaintenanceWindow          *models.MaintenanceWindow
 }
 
 func (c *Client) GetBIOS(ctx context.Context, systemID ...string) (*models.Bios, error) {
@@ -76,7 +80,7 @@ func (c *Client) UpdateBIOS(ctx context.Context, attributes Object, options BIOS
 	body := Object{wire.FieldAttributes: attributes}
 	if options.ApplyTime != "" {
 		allowed := bios.Settings.SupportedApplyTimes
-		if len(allowed) > 0 && !slices.Contains(allowed, string(options.ApplyTime)) {
+		if (options.RequireAdvertisedApplyTime || len(allowed) > 0) && !slices.Contains(allowed, string(options.ApplyTime)) {
 			return nil, errors.New("apply time is not advertised by BIOS")
 		}
 		schedule := Object{wire.FieldApplyTime: options.ApplyTime}
@@ -102,6 +106,33 @@ func (c *Client) UpdateBIOS(ctx context.Context, attributes Object, options BIOS
 		body["@Redfish.SettingsApplyTime"] = schedule
 	} else if options.MaintenanceWindow != nil {
 		return nil, errors.New("maintenance window requires apply time")
+	}
+	if options.SkipUnchanged {
+		snapshot, err := c.Request(ctx, http.MethodGet, uri, nil)
+		if err != nil {
+			return nil, err
+		}
+		var pending models.Bios
+		if err := json.Unmarshal(snapshot.Body, &pending); err != nil {
+			return nil, err
+		}
+		filtered, err := changedBIOSAttributes(attributes, bios.Attributes, pending.Attributes)
+		if err != nil {
+			return nil, err
+		}
+		if len(filtered) == 0 {
+			return &sdkresponse.Response{NoOp: true}, nil
+		}
+		body[wire.FieldAttributes] = filtered
+		tag := snapshot.ETag()
+		if tag == "" {
+			tag = models.Value(pending.ODataETag)
+		}
+		headers := http.Header{}
+		if tag != "" {
+			headers.Set(wire.HeaderIfMatch, tag)
+		}
+		return c.Patch(ctx, uri, body, RequestOptions{Headers: headers})
 	}
 	return c.patchWithETag(ctx, uri, body)
 }
@@ -145,14 +176,38 @@ func (c *Client) SetBootOptionEnabled(ctx context.Context, id string, enabled bo
 	return c.patchWithETag(ctx, models.Value(option.ODataID), Object{"BootOptionEnabled": enabled})
 }
 
-type BootOptions struct{ SystemID, Mode, Enabled string }
+type BootRoute string
+
+const (
+	// BootRouteCurrent preserves the original current-resource routing.
+	BootRouteCurrent BootRoute = ""
+	// BootRouteAuto routes each property present in pending settings to that resource.
+	BootRouteAuto BootRoute = "Auto"
+	// BootRouteSettings requires all requested properties on pending settings.
+	BootRouteSettings BootRoute = "Settings"
+)
+
+type BootOptions struct {
+	SystemID, Mode, Enabled string
+	Route                   BootRoute
+}
+
+// BootUpdateError reports a failed routed update and any destinations already updated.
+// Callers can inspect these destinations rather than replaying the whole mutation.
+type BootUpdateError struct {
+	CompletedURIs []string
+	Err           error
+}
+
+func (e *BootUpdateError) Error() string { return e.Err.Error() }
+func (e *BootUpdateError) Unwrap() error { return e.Err }
 
 func (c *Client) ChangeBootSource(ctx context.Context, target string, options BootOptions) (*sdkresponse.Response, error) {
 	system, err := c.GetSystem(ctx, options.SystemID)
 	if err != nil {
 		return nil, err
 	}
-	if system.Boot != nil && system.Boot.AllowableValues != nil && !slices.Contains(system.Boot.AllowableValues, target) {
+	if options.Route == BootRouteCurrent && system.Boot != nil && system.Boot.AllowableValues != nil && !slices.Contains(system.Boot.AllowableValues, target) {
 		return nil, fmt.Errorf("boot target %q is not advertised", target)
 	}
 	mode, enabled := options.Mode, options.Enabled
@@ -168,7 +223,7 @@ func (c *Client) ChangeBootSource(ctx context.Context, target string, options Bo
 	if !slices.Contains([]string{BootOverrideOnce, BootOverrideContinuous, BootOverrideDisabled}, enabled) {
 		return nil, errors.New("unsupported boot override enablement")
 	}
-	return c.patchWithETag(ctx, models.Value(system.ODataID), Object{wire.FieldBoot: Object{"BootSourceOverrideTarget": target, "BootSourceOverrideMode": mode, "BootSourceOverrideEnabled": enabled}})
+	return c.updateBoot(ctx, system, Object{wire.FieldBootTarget: target, wire.FieldBootMode: mode, wire.FieldBootEnabled: enabled}, options.Route)
 }
 
 type ResetOptions struct {

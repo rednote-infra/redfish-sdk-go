@@ -11,3 +11,11 @@ const (
 )
 
 const ODataVersion = "4.0"
+
+const (
+	FieldBootTarget  = "BootSourceOverrideTarget"
+	FieldBootMode    = "BootSourceOverrideMode"
+	FieldBootEnabled = "BootSourceOverrideEnabled"
+	FieldImage       = "Image"
+	FieldInserted    = "Inserted"
+)

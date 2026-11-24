@@ -381,3 +381,24 @@ const (
 )
 
 const HeaderContentLocation = wire.HeaderContentLocation
+
+// WithCollectionConcurrency bounds simultaneous collection member reads.
+func WithCollectionConcurrency(workers int) Option {
+	return sdkclient.WithCollectionConcurrency(workers)
+}
+
+type BootRoute = sdkclient.BootRoute
+type BootUpdateError = sdkclient.BootUpdateError
+
+const (
+	BootRouteCurrent  = sdkclient.BootRouteCurrent
+	BootRouteAuto     = sdkclient.BootRouteAuto
+	BootRouteSettings = sdkclient.BootRouteSettings
+)
+
+// CachedResource retains typed data and conditional GET response metadata.
+type CachedResource[T any] = sdkclient.CachedResource[T]
+
+func Fetch[T any](ctx context.Context, c *Client, uri string, previous *CachedResource[T]) (*CachedResource[T], error) {
+	return sdkclient.Fetch(ctx, c, uri, previous)
+}

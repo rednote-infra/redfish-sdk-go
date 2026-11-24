@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
@@ -171,6 +173,13 @@ func (c *Client) walkCollection(ctx context.Context, uri string, consume func([]
 		if page.Members == nil {
 			return failures, errors.New("collection is missing Members")
 		}
+		type memberRead struct {
+			uri      string
+			data     []byte
+			expanded bool
+			err      error
+		}
+		members := make([]memberRead, 0, len(page.Members))
 		for _, raw := range page.Members {
 			var identity models.Entity
 			if err = json.Unmarshal(raw, &identity); err != nil {
@@ -200,24 +209,50 @@ func (c *Client) walkCollection(ctx context.Context, uri string, consume func([]
 					break
 				}
 			}
-			data := []byte(raw)
-			if !expanded {
-				response, getErr := c.Request(ctx, "GET", target.String(), nil)
-				if getErr != nil {
-					if bestEffort {
-						failures = append(failures, CollectionFailure{Stage: "member", URI: target.String(), Err: getErr})
-						continue
+			members = append(members, memberRead{uri: target.String(), data: raw, expanded: expanded})
+		}
+		workers := max(1, c.cfg.collectionConcurrency)
+		if workers > 1 {
+			jobs := make(chan int)
+			var group sync.WaitGroup
+			for range min(workers, len(members)) {
+				group.Go(func() {
+					for i := range jobs {
+						member := &members[i]
+						if member.expanded {
+							continue
+						}
+						response, err := c.Request(ctx, http.MethodGet, member.uri, nil)
+						member.err = err
+						if err == nil {
+							member.data = response.Body
+						}
 					}
-					return failures, getErr
-				}
-				data = response.Body
+				})
 			}
-			if err = consume(data, target.String()); err != nil {
-				if bestEffort {
-					failures = append(failures, CollectionFailure{Stage: "member", URI: target.String(), Err: err})
-					continue
+			for i := range members {
+				jobs <- i
+			}
+			close(jobs)
+			group.Wait()
+		}
+		for _, member := range members {
+			err := member.err
+			if workers == 1 && !member.expanded {
+				response, getErr := c.Request(ctx, http.MethodGet, member.uri, nil)
+				err = getErr
+				if err == nil {
+					member.data = response.Body
 				}
-				return failures, err
+			}
+			if err == nil {
+				err = consume(member.data, member.uri)
+			}
+			if err != nil {
+				if !bestEffort {
+					return failures, err
+				}
+				failures = append(failures, CollectionFailure{Stage: "member", URI: member.uri, Err: err})
 			}
 		}
 		next := models.Value(page.MembersNextLink)

@@ -105,6 +105,12 @@ func managerOEMService[T any](ctx context.Context, c *Client, key string, manage
 	if errors.Is(err, sdkerrors.ErrNotFound) && manager.OEM != nil {
 		uri, err = findOEMLink(*manager.OEM, key)
 	}
+	if errors.Is(err, sdkerrors.ErrNotFound) && key == "SyslogService" {
+		uri, err = findOEMLink(manager.Extra, "Syslog")
+		if errors.Is(err, sdkerrors.ErrNotFound) && manager.OEM != nil {
+			uri, err = findOEMLink(*manager.OEM, "Syslog")
+		}
+	}
 	if errors.Is(err, sdkerrors.ErrNotFound) && key == "VncService" && manager.OEM != nil {
 		uri, err = findOEMLink(*manager.OEM, "RfbService")
 	}
@@ -209,7 +215,20 @@ func (c *Client) InsertVirtualMedia(ctx context.Context, mediaID string, request
 		return nil, err
 	}
 	if resource.Actions == nil || resource.Actions.InsertMedia == nil {
-		return nil, errors.New("virtual media does not advertise InsertMedia")
+		if c.cfg.vendor != VendorLenovo {
+			return nil, errors.New("virtual media does not advertise InsertMedia")
+		}
+		if request.TransferMethod != nil || request.TransferProtocolType != nil || request.HTTPHeaders != nil || len(request.Extra) > 0 {
+			return nil, errors.New("PATCH virtual media does not support action-only parameters")
+		}
+		if request.Inserted == nil {
+			request.Inserted = models.Ptr(true)
+		}
+		response, err := c.patchWithETag(ctx, models.Value(resource.ODataID), request)
+		if err != nil {
+			return nil, err
+		}
+		return response.Operation()
 	}
 	action := resource.Actions.InsertMedia
 	if request.TransferMethod != nil {
@@ -231,7 +250,14 @@ func (c *Client) EjectVirtualMedia(ctx context.Context, mediaID string, managerI
 		return nil, err
 	}
 	if resource.Actions == nil || resource.Actions.EjectMedia == nil {
-		return nil, errors.New("virtual media does not advertise EjectMedia")
+		if c.cfg.vendor != VendorLenovo {
+			return nil, errors.New("virtual media does not advertise EjectMedia")
+		}
+		response, err := c.patchWithETag(ctx, models.Value(resource.ODataID), Object{wire.FieldInserted: false, wire.FieldImage: ""})
+		if err != nil {
+			return nil, err
+		}
+		return response.Operation()
 	}
 	return c.postOperation(ctx, models.Value(resource.Actions.EjectMedia.Target), Object{})
 }

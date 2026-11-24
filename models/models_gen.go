@@ -4,6 +4,8 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"net/http"
 )
 
 // ApplyTime is a protocol enumeration; unknown response values remain readable.
@@ -476,6 +478,10 @@ func (m ActionTarget) MarshalJSON() ([]byte, error) {
 
 // AttributeDefinition matches the Python SDK response contract.
 type AttributeDefinition struct {
+	exactLowerBound      *big.Int
+	exactUpperBound      *big.Int
+	exactScalarIncrement *big.Int
+
 	AttributeName   string                     `json:"AttributeName"`
 	Type            *string                    `json:"Type,omitempty"`
 	DisplayName     *string                    `json:"DisplayName,omitempty"`
@@ -503,14 +509,12 @@ type AttributeDefinition struct {
 }
 
 func (m *AttributeDefinition) UnmarshalJSON(data []byte) error {
-	type plain AttributeDefinition
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeAttributeDefinition(data, m)
 	m.Extra = extra
 	return err
 }
 func (m AttributeDefinition) MarshalJSON() ([]byte, error) {
-	type plain AttributeDefinition
-	return encodeExtra(plain(m), m.Extra)
+	return encodeAttributeDefinition(m)
 }
 func (m AttributeDefinition) Format(state fmt.State, verb rune) { formatSensitiveModel(state, m) }
 
@@ -1879,6 +1883,7 @@ func (m DnsService) ResourceID() string {
 
 // Drive matches the Python SDK response contract.
 type Drive struct {
+	Operations                    []DriveOperation `json:"Operations,omitempty"`
 	inferredIndicatorLED          *string
 	inferredIndicatorValue        string
 	ODataID                       *string                    `json:"@odata.id,omitempty"`
@@ -6760,18 +6765,20 @@ func (m RedfishErrorResponse) MarshalJSON() ([]byte, error) {
 
 // RedfishResponse matches the Python SDK response contract.
 type RedfishResponse struct {
-	Error       *RedfishError              `json:"error,omitempty"`
-	ODataID     *string                    `json:"@odata.id,omitempty"`
-	ODataType   *string                    `json:"@odata.type,omitempty"`
-	Message     *string                    `json:"Message,omitempty"`
-	TaskID      *string                    `json:"TaskId,omitempty"`
-	TaskState   *string                    `json:"TaskState,omitempty"`
-	TaskMonitor *string                    `json:"TaskMonitor,omitempty"`
-	HTTPStatus  *int64                     `json:"HttpStatus,omitempty"`
-	TaskURI     *string                    `json:"TaskUri,omitempty"`
-	RetryAfter  *string                    `json:"RetryAfter,omitempty"`
-	Extra       map[string]json.RawMessage `json:"-"`
-	NullFields  map[string]bool            `json:"-"`
+	// ResponseHeaders retains metadata such as Link on mutation responses.
+	ResponseHeaders http.Header                `json:"-"`
+	Error           *RedfishError              `json:"error,omitempty"`
+	ODataID         *string                    `json:"@odata.id,omitempty"`
+	ODataType       *string                    `json:"@odata.type,omitempty"`
+	Message         *string                    `json:"Message,omitempty"`
+	TaskID          *string                    `json:"TaskId,omitempty"`
+	TaskState       *string                    `json:"TaskState,omitempty"`
+	TaskMonitor     *string                    `json:"TaskMonitor,omitempty"`
+	HTTPStatus      *int64                     `json:"HttpStatus,omitempty"`
+	TaskURI         *string                    `json:"TaskUri,omitempty"`
+	RetryAfter      *string                    `json:"RetryAfter,omitempty"`
+	Extra           map[string]json.RawMessage `json:"-"`
+	NullFields      map[string]bool            `json:"-"`
 }
 
 func (m *RedfishResponse) UnmarshalJSON(data []byte) error {
@@ -8371,6 +8378,8 @@ func (m Storage) ResourceID() string {
 
 // StorageController matches the Python SDK response contract.
 type StorageController struct {
+	emptyPCIeInterface           bool
+	PCIeInterface                *PCIeInterface             `json:"PCIeInterface,omitempty"`
 	ODataID                      *string                    `json:"@odata.id,omitempty"`
 	CacheSummary                 *CacheSummary              `json:"CacheSummary,omitempty"`
 	FirmwareVersion              *string                    `json:"FirmwareVersion,omitempty"`
@@ -8390,14 +8399,17 @@ type StorageController struct {
 }
 
 func (m *StorageController) UnmarshalJSON(data []byte) error {
-	type plain StorageController
-	extra, err := decodeExtra(data, (*plain)(m))
+	extra, err := decodeStorageController(data, m)
 	m.Extra = extra
 	return err
 }
 func (m StorageController) MarshalJSON() ([]byte, error) {
 	type plain StorageController
-	return encodeExtra(plain(m), m.Extra)
+	data, err := encodeExtra(plain(m), m.Extra)
+	if err != nil || !m.emptyPCIeInterface || m.PCIeInterface != nil {
+		return data, err
+	}
+	return withEmptyArray(data, "PCIeInterface")
 }
 func (m StorageController) ResourceURI() string {
 	if m.ODataID == nil {
@@ -8517,7 +8529,7 @@ type SyslogServer struct {
 	MemberID   *int64                     `json:"MemberId,omitempty"`
 	Enabled    *bool                      `json:"Enabled,omitempty"`
 	Logtype    json.RawMessage            `json:"logtype,omitempty" redfish:"LogType,Logtype"`
-	Address    *string                    `json:"Address,omitempty"`
+	Address    *string                    `json:"Address,omitempty" redfish:"ServerIP"`
 	Port       *int64                     `json:"Port,omitempty"`
 	Extra      map[string]json.RawMessage `json:"-"`
 	NullFields map[string]bool            `json:"-"`
@@ -8535,6 +8547,9 @@ func (m SyslogServer) MarshalJSON() ([]byte, error) {
 
 // SyslogService matches the Python SDK response contract.
 type SyslogService struct {
+	supermicroSyslog bool
+	scalarSyslog     bool
+
 	ODataID                   *string                    `json:"@odata.id,omitempty"`
 	ODataContext              *string                    `json:"@odata.context,omitempty"`
 	ODataType                 *string                    `json:"@odata.type,omitempty"`
@@ -8564,10 +8579,7 @@ func (m *SyslogService) UnmarshalJSON(data []byte) error {
 	m.Extra = extra
 	return err
 }
-func (m SyslogService) MarshalJSON() ([]byte, error) {
-	type plain SyslogService
-	return encodeExtra(plain(m), m.Extra)
-}
+func (m SyslogService) MarshalJSON() ([]byte, error) { return encodeSyslogService(m) }
 func (m SyslogService) ResourceURI() string {
 	if m.ODataID == nil {
 		return ""

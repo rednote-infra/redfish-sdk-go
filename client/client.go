@@ -46,21 +46,22 @@ type RetryPolicy struct {
 }
 
 type config struct {
-	client            *http.Client
-	externalClient    *http.Client
-	verifyTLS         bool
-	caFile            string
-	proxy             string
-	serviceRoot       string
-	token             string
-	sessionURI        string
-	timeout           time.Duration
-	connectTimeout    time.Duration
-	auth              AuthenticationMode
-	retry             RetryPolicy
-	vendor            Vendor
-	providers         *ProviderRegistry
-	strictCollections bool
+	client                *http.Client
+	externalClient        *http.Client
+	verifyTLS             bool
+	caFile                string
+	proxy                 string
+	serviceRoot           string
+	token                 string
+	sessionURI            string
+	timeout               time.Duration
+	connectTimeout        time.Duration
+	auth                  AuthenticationMode
+	retry                 RetryPolicy
+	vendor                Vendor
+	providers             *ProviderRegistry
+	strictCollections     bool
+	collectionConcurrency int
 }
 
 type Option func(*config) error
@@ -284,6 +285,8 @@ type RequestOptions struct {
 	ReadTimeout    time.Duration
 	// AllowRedirects follows same-origin URLs only.
 	AllowRedirects bool
+	// AcceptNotModified returns HTTP 304 with its headers for conditional reads.
+	AcceptNotModified bool
 	// ReturnRedirects exposes unfollowed 3xx responses without changing legacy defaults.
 	ReturnRedirects bool
 	Headers         http.Header
@@ -404,7 +407,7 @@ func (c *Client) request(ctx context.Context, method, uri string, body any, toke
 		content, readErr := io.ReadAll(io.LimitReader(raw.Body, _maxJSONBytes+1))
 		closeErr := raw.Body.Close()
 		result := &sdkresponse.Response{StatusCode: raw.StatusCode, Header: raw.Header.Clone(), Body: content, URL: target.String()}
-		if opt.ReturnRedirects && raw.StatusCode >= http.StatusMultipleChoices && raw.StatusCode < http.StatusBadRequest {
+		if (opt.AcceptNotModified && raw.StatusCode == http.StatusNotModified) || (opt.ReturnRedirects && raw.StatusCode >= http.StatusMultipleChoices && raw.StatusCode < http.StatusBadRequest) {
 			return result, nil
 		}
 		if raw.StatusCode < 200 || raw.StatusCode >= 300 {
@@ -575,5 +578,17 @@ func (c *Client) Format(state fmt.State, verb rune) {
 		fmt.Fprintf(state, "%q", c.String())
 	} else {
 		fmt.Fprint(state, c.String())
+	}
+}
+
+// WithCollectionConcurrency bounds concurrent member reads. The default is one.
+// Members and diagnostics retain the service's advertised order.
+func WithCollectionConcurrency(workers int) Option {
+	return func(c *config) error {
+		if workers < 1 {
+			return errors.New("collection concurrency must be positive")
+		}
+		c.collectionConcurrency = workers
+		return nil
 	}
 }
