@@ -6,6 +6,7 @@ import (
 
 	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	"github.com/rednote-infra/redfish-sdk-go/internal/redaction"
+	"github.com/rednote-infra/redfish-sdk-go/models"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
@@ -23,6 +24,15 @@ func (t oemTransport) RedactKnownSecrets(message string) string {
 }
 
 var _ provider.ResourceClient = oemTransport{}
+var _ provider.DiagnosticResourceClient = oemTransport{}
+
+func (t oemTransport) GetLogService(ctx context.Context, collectionURI, id string) (*models.Log, error) {
+	services, err := collection[models.Log](ctx, t.Client, collectionURI)
+	if err != nil {
+		return nil, err
+	}
+	return selectItem(services, id)
+}
 
 // ResourceClient provides this Client's authenticated transport to OEM resource services.
 func (c *Client) ResourceClient() provider.ResourceClient { return oemTransport{Client: c} }

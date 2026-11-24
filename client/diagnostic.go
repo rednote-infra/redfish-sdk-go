@@ -348,7 +348,7 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 	}
 	if task.ProgressURI == "" {
 		if models.Value(task.Task.TaskState) == TaskCompleted {
-			return taskFailure(task.Task)
+			return c.validateDiagnosticTask(strategy, task)
 		}
 		operation := &models.RedfishResponse{ODataID: task.Task.ODataID, TaskURI: task.Task.ODataID, TaskMonitor: task.Task.TaskMonitor}
 		if task.Response != nil {
@@ -386,7 +386,7 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 			}
 			task.Task = result.Task
 		}
-		return nil
+		return c.validateDiagnosticTask(strategy, task)
 	}
 	ctx, cancel, interval, err := pollContext(ctx, options)
 	if err != nil {
@@ -511,6 +511,17 @@ func (c *Client) resolveDiagnosticArtifact(ctx context.Context, task *Diagnostic
 	}
 	if task.Task == nil {
 		return nil, errors.New("diagnostic task metadata is missing")
+	}
+	strategy, err := c.diagnosticProvider(task.Vendor)
+	if err != nil {
+		return nil, err
+	}
+	if resolver, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticArtifactResolver); ok {
+		uri, err := resolver.ResolveDiagnosticArtifact(ctx, oemTransport{Client: c}, task.Task)
+		if err != nil {
+			return nil, err
+		}
+		return &diagnosticArtifact{URI: uri, Method: http.MethodGet}, nil
 	}
 	if uri := taskArtifactURI(task); uri != "" {
 		return &diagnosticArtifact{URI: uri, Method: http.MethodGet}, nil
@@ -659,7 +670,16 @@ func (c *Client) collectSystemDiagnostic(ctx context.Context, provider LogCollec
 	if err != nil {
 		return nil, err
 	}
-	action, source, err := c.diagnosticAction(ctx, uri, wire.ActionCollectDiagnosticData, options.LogID)
+	layout := diagnosticLayout(provider)
+	logID := options.LogID
+	if logID == "" {
+		logID = layout.DefaultLogServiceID
+	}
+	actionName := layout.CollectAction
+	if actionName == "" {
+		actionName = wire.ActionCollectDiagnosticData
+	}
+	action, source, err := c.diagnosticAction(ctx, uri, actionName, logID)
 	if err != nil {
 		return nil, err
 	}
@@ -841,6 +861,22 @@ func diagnosticImplementation(strategy LogCollectStrategy) LogCollectStrategy {
 		return adapter.LogCollectStrategy
 	}
 	return strategy
+}
+
+func (c *Client) validateDiagnosticTask(strategy LogCollectStrategy, task *DiagnosticTask) error {
+	validator, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticTaskValidator)
+	if !ok {
+		return taskFailure(task.Task)
+	}
+	err := validator.ValidateDiagnosticTask(task.Task)
+	var failure *sdkerrors.AsyncOperationError
+	if errors.As(err, &failure) {
+		copy := *failure
+		copy.Response = task.Response
+		copy.Message = redaction.String(copy.Message, c.passwordValue(), c.tokenSnapshot())
+		return &copy
+	}
+	return err
 }
 func diagnosticLayout(strategy LogCollectStrategy) resourceprovider.DiagnosticLayout {
 	if policy, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticResourceStrategy); ok {

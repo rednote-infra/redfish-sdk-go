@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"context"
+
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
@@ -12,6 +14,7 @@ type DiagnosticLayout struct {
 	SystemScope              bool
 	SelectService            bool
 	CollectAction            string
+	DefaultLogServiceID      string
 	FallbackCollectAction    string
 	UseManagerActions        bool
 	ManagerServiceSuffix     string
@@ -70,4 +73,21 @@ type DiagnosticArtifactSource interface {
 // DiagnosticResponseReader decodes monitor bodies and headers supplied by the service.
 type DiagnosticResponseReader interface {
 	DecodeDiagnosticResponse(*sdkresponse.Response) (DiagnosticProgress, error)
+}
+
+// DiagnosticResourceClient exposes discovery and reads needed by vendor artifact policies.
+type DiagnosticResourceClient interface {
+	Get(context.Context, string, any) error
+	GetSystem(context.Context, ...string) (*models.System, error)
+	GetLogService(context.Context, string, string) (*models.Log, error)
+}
+
+// DiagnosticArtifactResolver resolves a vendor artifact before generic task metadata.
+type DiagnosticArtifactResolver interface {
+	ResolveDiagnosticArtifact(context.Context, DiagnosticResourceClient, *models.Task) (string, error)
+}
+
+// DiagnosticTaskValidator applies vendor completion requirements after task polling.
+type DiagnosticTaskValidator interface {
+	ValidateDiagnosticTask(*models.Task) error
 }

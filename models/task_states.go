@@ -11,4 +11,5 @@ const (
 	TaskCancelled      = "Cancelled"
 	TaskInterrupted    = "Interrupted"
 	TaskStatusCritical = "Critical"
+	TaskStatusOK       = "OK"
 )
