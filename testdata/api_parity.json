@@ -1,0 +1,758 @@
+{
+  "source": "rednote-infra/redfish-python-sdk",
+  "commit": "2df847fb066174d27fd7817e5ebbbdab502ff60e",
+  "methods": [
+    {
+      "python": "get_processor_ports",
+      "go": "GetProcessorPorts"
+    },
+    {
+      "python": "get_ports",
+      "go": "GetPorts"
+    },
+    {
+      "python": "get_port",
+      "go": "GetPort"
+    },
+    {
+      "python": "get_connected_pcie_ports",
+      "go": "GetConnectedPCIePorts"
+    },
+    {
+      "python": "get_port_metrics",
+      "go": "GetPortMetrics"
+    },
+    {
+      "python": "reset_port_transceivers",
+      "go": "ResetPortTransceivers"
+    },
+    {
+      "python": "get_cxl_logical_devices",
+      "go": "GetCXLLogicalDevices"
+    },
+    {
+      "python": "get_port_cxl_logical_devices",
+      "go": "GetPortCXLLogicalDevices"
+    },
+    {
+      "python": "get_cooling_units",
+      "go": "GetCoolingUnits"
+    },
+    {
+      "python": "get_coolant_connectors",
+      "go": "GetCoolantConnectors"
+    },
+    {
+      "python": "get_sensors",
+      "go": "GetSensors"
+    },
+    {
+      "python": "get_sensor",
+      "go": "GetSensor"
+    },
+    {
+      "python": "get_environment_metrics",
+      "go": "GetEnvironmentMetrics"
+    },
+    {
+      "python": "get_secure_boot",
+      "go": "GetSecureBoot"
+    },
+    {
+      "python": "update_secure_boot",
+      "go": "UpdateSecureBoot"
+    },
+    {
+      "python": "reset_secure_boot_keys",
+      "go": "ResetSecureBootKeys"
+    },
+    {
+      "python": "get_network_interfaces",
+      "go": "GetNetworkInterfaces"
+    },
+    {
+      "python": "get_network_ports",
+      "go": "GetNetworkPorts"
+    },
+    {
+      "python": "get_network_port",
+      "go": "GetNetworkPort"
+    },
+    {
+      "python": "get_memory_domains",
+      "go": "GetMemoryDomains"
+    },
+    {
+      "python": "get_memory_domain",
+      "go": "GetMemoryDomain"
+    },
+    {
+      "python": "get_memory_chunks",
+      "go": "GetMemoryChunks"
+    },
+    {
+      "python": "get_memory_chunk",
+      "go": "GetMemoryChunk"
+    },
+    {
+      "python": "get_memory_metrics",
+      "go": "GetMemoryMetrics"
+    },
+    {
+      "python": "upload_sign_key",
+      "go": "UploadSignKey"
+    },
+    {
+      "python": "upload_firmware_image",
+      "go": "UploadFirmwareImage"
+    },
+    {
+      "python": "upload_firmware_file",
+      "go": "UploadFirmwareFile"
+    },
+    {
+      "python": "bmc_firmware_update",
+      "go": "BMCFirmwareUpdate"
+    },
+    {
+      "python": "build_update_parameters",
+      "go": "BuildUpdateParameters"
+    },
+    {
+      "python": "standard_simple_update",
+      "go": "StandardSimpleUpdate"
+    },
+    {
+      "python": "stage_update",
+      "go": "StageUpdate"
+    },
+    {
+      "python": "activate_software",
+      "go": "ActivateSoftware"
+    },
+    {
+      "python": "get_composition_service",
+      "go": "GetCompositionService"
+    },
+    {
+      "python": "get_resource_blocks",
+      "go": "GetResourceBlocks"
+    },
+    {
+      "python": "get_resource_block",
+      "go": "GetResourceBlock"
+    },
+    {
+      "python": "get_resource_zones",
+      "go": "GetResourceZones"
+    },
+    {
+      "python": "get_resource_zone",
+      "go": "GetResourceZone"
+    },
+    {
+      "python": "get_policy_service",
+      "go": "GetPolicyService"
+    },
+    {
+      "python": "get_policies",
+      "go": "GetPolicies"
+    },
+    {
+      "python": "get_policy",
+      "go": "GetPolicy"
+    },
+    {
+      "python": "create_policy",
+      "go": "CreatePolicy"
+    },
+    {
+      "python": "update_policy",
+      "go": "UpdatePolicy"
+    },
+    {
+      "python": "enable_policy",
+      "go": "EnablePolicy"
+    },
+    {
+      "python": "disable_policy",
+      "go": "DisablePolicy"
+    },
+    {
+      "python": "delete_policy",
+      "go": "DeletePolicy"
+    },
+    {
+      "python": "get_telemetry_service",
+      "go": "GetTelemetryService"
+    },
+    {
+      "python": "get_metric_definitions",
+      "go": "GetMetricDefinitions"
+    },
+    {
+      "python": "get_metric_definition",
+      "go": "GetMetricDefinition"
+    },
+    {
+      "python": "get_metric_report_definitions",
+      "go": "GetMetricReportDefinitions"
+    },
+    {
+      "python": "get_metric_report_definition",
+      "go": "GetMetricReportDefinition"
+    },
+    {
+      "python": "get_metric_reports",
+      "go": "GetMetricReports"
+    },
+    {
+      "python": "get_metric_report",
+      "go": "GetMetricReport"
+    },
+    {
+      "python": "get_telemetry_triggers",
+      "go": "GetTelemetryTriggers"
+    },
+    {
+      "python": "get_telemetry_trigger",
+      "go": "GetTelemetryTrigger"
+    },
+    {
+      "python": "get_metric_report_log",
+      "go": "GetMetricReportLog"
+    },
+    {
+      "python": "get_metric_report_log_entries",
+      "go": "GetMetricReportLogEntries"
+    },
+    {
+      "python": "host",
+      "go": "Host"
+    },
+    {
+      "python": "service_root",
+      "go": "ServiceRoot"
+    },
+    {
+      "python": "root",
+      "go": "Root"
+    },
+    {
+      "python": "close",
+      "go": "Close"
+    },
+    {
+      "python": "get_system",
+      "go": "GetSystem"
+    },
+    {
+      "python": "get_systems",
+      "go": "GetSystems"
+    },
+    {
+      "python": "get_processors",
+      "go": "GetProcessors"
+    },
+    {
+      "python": "get_processor",
+      "go": "GetProcessor"
+    },
+    {
+      "python": "get_memory",
+      "go": "GetMemory"
+    },
+    {
+      "python": "get_memory_device",
+      "go": "GetMemoryDevice"
+    },
+    {
+      "python": "get_storages",
+      "go": "GetStorages"
+    },
+    {
+      "python": "get_volumes",
+      "go": "GetVolumes"
+    },
+    {
+      "python": "get_gpus",
+      "go": "GetGPUs"
+    },
+    {
+      "python": "get_bios",
+      "go": "GetBIOS"
+    },
+    {
+      "python": "get_bios_settings",
+      "go": "GetBiosSettings"
+    },
+    {
+      "python": "update_bios",
+      "go": "UpdateBIOS"
+    },
+    {
+      "python": "get_system_log_services",
+      "go": "GetSystemLogServices"
+    },
+    {
+      "python": "get_system_log_entries",
+      "go": "GetSystemLogEntries"
+    },
+    {
+      "python": "get_system_log_service",
+      "go": "GetSystemLogService"
+    },
+    {
+      "python": "clear_system_log",
+      "go": "ClearSystemLog"
+    },
+    {
+      "python": "get_boot_options",
+      "go": "GetBootOptions"
+    },
+    {
+      "python": "get_boot_option",
+      "go": "GetBootOption"
+    },
+    {
+      "python": "set_boot_option_enabled",
+      "go": "SetBootOptionEnabled"
+    },
+    {
+      "python": "get_system_fru",
+      "go": "GetSystemFRU"
+    },
+    {
+      "python": "get_pcie_device",
+      "go": "GetPCIeDevice"
+    },
+    {
+      "python": "change_boot_source",
+      "go": "ChangeBootSource"
+    },
+    {
+      "python": "reset",
+      "go": "Reset"
+    },
+    {
+      "python": "graphical_console_get_one_time_url",
+      "go": "GraphicalConsoleGetOneTimeURL"
+    },
+    {
+      "python": "graphical_console_set_one_time_password",
+      "go": "GraphicalConsoleSetOneTimePassword"
+    },
+    {
+      "python": "graphical_console_set_password",
+      "go": "GraphicalConsoleSetPassword"
+    },
+    {
+      "python": "get_chassis",
+      "go": "GetChassis"
+    },
+    {
+      "python": "get_drives",
+      "go": "GetDrives"
+    },
+    {
+      "python": "get_drive",
+      "go": "GetDrive"
+    },
+    {
+      "python": "drive_reset",
+      "go": "DriveReset"
+    },
+    {
+      "python": "set_indicator_led",
+      "go": "SetIndicatorLED"
+    },
+    {
+      "python": "set_drive_indicator_led",
+      "go": "SetDriveIndicatorLED"
+    },
+    {
+      "python": "set_drive_location_indicator",
+      "go": "SetDriveLocationIndicator"
+    },
+    {
+      "python": "get_network_adapters",
+      "go": "GetNetworkAdapters"
+    },
+    {
+      "python": "get_pcie_devices",
+      "go": "GetPCIeDevices"
+    },
+    {
+      "python": "get_power",
+      "go": "GetPower"
+    },
+    {
+      "python": "get_power_subsystem",
+      "go": "GetPowerSubsystem"
+    },
+    {
+      "python": "get_power_supply",
+      "go": "GetPowerSupply"
+    },
+    {
+      "python": "get_power_supply_metrics",
+      "go": "GetPowerSupplyMetrics"
+    },
+    {
+      "python": "get_thermal",
+      "go": "GetThermal"
+    },
+    {
+      "python": "get_inlet_history_temperature",
+      "go": "GetInletHistoryTemperature"
+    },
+    {
+      "python": "get_fru_service",
+      "go": "GetFRUService"
+    },
+    {
+      "python": "get_manager",
+      "go": "GetManager"
+    },
+    {
+      "python": "get_serial_interfaces",
+      "go": "GetSerialInterfaces"
+    },
+    {
+      "python": "get_serial_interface",
+      "go": "GetSerialInterface"
+    },
+    {
+      "python": "update_serial_interface",
+      "go": "UpdateSerialInterface"
+    },
+    {
+      "python": "get_manager_log_services",
+      "go": "GetManagerLogServices"
+    },
+    {
+      "python": "reset_manager",
+      "go": "ResetManager"
+    },
+    {
+      "python": "get_manager_log_service",
+      "go": "GetManagerLogService"
+    },
+    {
+      "python": "clear_manager_log",
+      "go": "ClearManagerLog"
+    },
+    {
+      "python": "get_manager_log_entries",
+      "go": "GetManagerLogEntries"
+    },
+    {
+      "python": "collect_diagnostic_data",
+      "go": "CollectDiagnosticData"
+    },
+    {
+      "python": "download_diagnostic_data",
+      "go": "DownloadDiagnosticData"
+    },
+    {
+      "python": "collect_and_download_diagnostic_data",
+      "go": "CollectAndDownloadDiagnosticData"
+    },
+    {
+      "python": "get_network_protocol",
+      "go": "GetNetworkProtocol"
+    },
+    {
+      "python": "get_manager_ethernet_interfaces",
+      "go": "GetManagerEthernetInterfaces"
+    },
+    {
+      "python": "get_host_interfaces",
+      "go": "GetHostInterfaces"
+    },
+    {
+      "python": "get_kvm_service",
+      "go": "GetKVMService"
+    },
+    {
+      "python": "get_ntp_service",
+      "go": "GetNTPService"
+    },
+    {
+      "python": "get_syslog_service",
+      "go": "GetSyslogService"
+    },
+    {
+      "python": "get_snmp_service",
+      "go": "GetSNMPService"
+    },
+    {
+      "python": "get_lldp_service",
+      "go": "GetLLDPService"
+    },
+    {
+      "python": "get_dns_service",
+      "go": "GetDNSService"
+    },
+    {
+      "python": "get_vnc_service",
+      "go": "GetVNCService"
+    },
+    {
+      "python": "get_security_service",
+      "go": "GetSecurityService"
+    },
+    {
+      "python": "get_https_cert",
+      "go": "GetHTTPSCert"
+    },
+    {
+      "python": "get_https_certificates",
+      "go": "GetHTTPSCertificates"
+    },
+    {
+      "python": "get_firewall_rules",
+      "go": "GetFirewallRules"
+    },
+    {
+      "python": "get_virtual_media",
+      "go": "GetVirtualMedia"
+    },
+    {
+      "python": "get_virtual_media_resource",
+      "go": "GetVirtualMediaResource"
+    },
+    {
+      "python": "insert_virtual_media",
+      "go": "InsertVirtualMedia"
+    },
+    {
+      "python": "eject_virtual_media",
+      "go": "EjectVirtualMedia"
+    },
+    {
+      "python": "get_sol_source",
+      "go": "GetSOLSource"
+    },
+    {
+      "python": "get_accounts",
+      "go": "GetAccounts"
+    },
+    {
+      "python": "get_roles",
+      "go": "GetRoles"
+    },
+    {
+      "python": "add_account",
+      "go": "AddAccount"
+    },
+    {
+      "python": "update_account",
+      "go": "UpdateAccount"
+    },
+    {
+      "python": "delete_account",
+      "go": "DeleteAccount"
+    },
+    {
+      "python": "get_sessions",
+      "go": "GetSessions"
+    },
+    {
+      "python": "get_session",
+      "go": "GetSession"
+    },
+    {
+      "python": "create_session",
+      "go": "CreateSession"
+    },
+    {
+      "python": "delete_session",
+      "go": "DeleteSession"
+    },
+    {
+      "python": "get_subscriptions",
+      "go": "GetSubscriptions"
+    },
+    {
+      "python": "get_subscription",
+      "go": "GetSubscription"
+    },
+    {
+      "python": "subscribe",
+      "go": "Subscribe"
+    },
+    {
+      "python": "delete_subscription",
+      "go": "DeleteSubscription"
+    },
+    {
+      "python": "get_event_service",
+      "go": "GetEventService"
+    },
+    {
+      "python": "submit_test_event",
+      "go": "SubmitTestEvent"
+    },
+    {
+      "python": "get_firmware_inventory",
+      "go": "GetFirmwareInventory"
+    },
+    {
+      "python": "get_software_inventory",
+      "go": "GetSoftwareInventory"
+    },
+    {
+      "python": "get_update_service_capabilities",
+      "go": "GetUpdateServiceCapabilities"
+    },
+    {
+      "python": "get_client_certificates",
+      "go": "GetClientCertificates"
+    },
+    {
+      "python": "simple_update",
+      "go": "SimpleUpdate"
+    },
+    {
+      "python": "get_registries",
+      "go": "GetRegistries"
+    },
+    {
+      "python": "get_registry",
+      "go": "GetRegistry"
+    },
+    {
+      "python": "resolve_message",
+      "go": "ResolveMessage"
+    },
+    {
+      "python": "clear_registry_cache",
+      "go": "ClearRegistryCache"
+    },
+    {
+      "python": "get_attribute_registry",
+      "go": "GetAttributeRegistry"
+    },
+    {
+      "python": "get_bios_attribute_registry",
+      "go": "GetBIOSAttributeRegistry"
+    },
+    {
+      "python": "validate_bios_attributes",
+      "go": "ValidateBIOSAttributes"
+    },
+    {
+      "python": "get_tasks",
+      "go": "GetTasks"
+    },
+    {
+      "python": "get_task",
+      "go": "GetTask"
+    },
+    {
+      "python": "wait_for_task",
+      "go": "WaitForTask"
+    },
+    {
+      "python": "wait_for_operation",
+      "go": "WaitForOperation"
+    },
+    {
+      "python": "get_resource_by_alias",
+      "go": "GetResourceByAlias"
+    },
+    {
+      "python": "resource_alias_uri",
+      "go": "ResourceAliasURI"
+    },
+    {
+      "python": "set_resource_alias",
+      "go": "SetResourceAlias"
+    },
+    {
+      "python": "clear_resource_alias",
+      "go": "ClearResourceAlias"
+    },
+    {
+      "python": "get_baseboard_fru",
+      "go": "GetBaseboardFRU"
+    },
+    {
+      "python": "get_mainboard",
+      "go": "GetMainboard"
+    },
+    {
+      "python": "get_fan",
+      "go": "GetFan"
+    },
+    {
+      "python": "get_power_supplies",
+      "go": "GetPowerSupplies"
+    },
+    {
+      "python": "get_manufacturer",
+      "go": "GetManufacturer"
+    },
+    {
+      "python": "get_etag",
+      "go": "GetETag"
+    },
+    {
+      "python": "get_odata_id",
+      "go": "GetODataID"
+    },
+    {
+      "python": "get_resource_odata_id",
+      "go": "GetResourceODataID"
+    },
+    {
+      "python": "request",
+      "go": "Request"
+    },
+    {
+      "python": "change_set",
+      "go": "ChangeSet"
+    },
+    {
+      "python": "discover_resources",
+      "go": "DiscoverResources"
+    },
+    {
+      "python": "find_resources",
+      "go": "FindResources"
+    },
+    {
+      "python": "get_raw",
+      "go": "GetRaw"
+    },
+    {
+      "python": "patch",
+      "go": "Patch"
+    },
+    {
+      "python": "patch_response",
+      "go": "PatchResponse"
+    },
+    {
+      "python": "post",
+      "go": "Post"
+    },
+    {
+      "python": "post_response",
+      "go": "PostResponse"
+    },
+    {
+      "python": "delete",
+      "go": "Delete"
+    },
+    {
+      "python": "delete_response",
+      "go": "DeleteResponse"
+    },
+    {
+      "python": "get_all_components_summary",
+      "go": "GetAllComponentsSummary"
+    }
+  ]
+}

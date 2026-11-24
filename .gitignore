@@ -1,0 +1,9 @@
+.env
+.env.*
+*.pem
+*.key
+*.test
+coverage.out
+coverage.html
+dist/
+__pycache__/

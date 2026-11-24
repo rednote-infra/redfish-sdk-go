@@ -1,0 +1,197 @@
+package client
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/rednote-infra/redfish-sdk-go/client/provider"
+	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
+	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
+	"github.com/rednote-infra/redfish-sdk-go/models"
+	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
+)
+
+const (
+	TaskNew         = models.TaskNew
+	TaskRunning     = models.TaskRunning
+	TaskPending     = models.TaskPending
+	TaskCompleted   = models.TaskCompleted
+	TaskException   = models.TaskException
+	TaskKilled      = models.TaskKilled
+	TaskCancelled   = models.TaskCancelled
+	TaskInterrupted = models.TaskInterrupted
+)
+
+type PollOptions struct {
+	Interval, Timeout        time.Duration
+	MaxTransientFailures     int
+	AllowNotFoundRecovery    bool
+	AllowTaskVisibilityDelay bool
+	initialDelay             time.Duration
+	taskURI                  string
+}
+
+type AsyncOperationError = sdkerrors.AsyncOperationError
+
+type OperationResult struct {
+	InitialHTTPStatus int
+	TaskMonitorURI    string
+	TaskURI           string
+	InitialRetryAfter string
+	MonitorMissing    bool
+	Task              *models.Task
+	Response          *sdkresponse.Response
+}
+
+func taskFailure(task *models.Task) error { return sdkerrors.TaskFailure(task) }
+
+func pollContext(ctx context.Context, options PollOptions) (context.Context, context.CancelFunc, time.Duration, error) {
+	return provider.NewPollContext(ctx, provider.PollSettings{Interval: options.Interval, Timeout: options.Timeout, MaxTransientFailures: options.MaxTransientFailures})
+}
+
+func (c *Client) WaitForTask(ctx context.Context, id string, options PollOptions) (*models.Task, error) {
+	if id == "" {
+		return nil, errors.New("task identifier must not be empty")
+	}
+	uri := id
+	if id[0] != '/' {
+		task, err := c.GetTask(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		uri = models.Value(task.ODataID)
+	}
+	result, err := c.pollOperation(ctx, uri, false, options)
+	if result == nil {
+		return nil, err
+	}
+	return result.Task, err
+}
+
+func (c *Client) WaitForOperation(ctx context.Context, operation *models.RedfishResponse, options PollOptions) (*OperationResult, error) {
+	if operation == nil {
+		return nil, errors.New("operation must not be nil")
+	}
+	uri := models.Value(operation.TaskMonitor)
+	monitor := uri != ""
+	if uri == "" {
+		uri = models.Value(operation.TaskURI)
+	}
+	if uri == "" {
+		uri = models.Value(operation.ODataID)
+	}
+	if uri == "" {
+		if models.Value(operation.HTTPStatus) == http.StatusAccepted {
+			return nil, errors.New("accepted operation does not advertise a task monitor or task URI")
+		}
+		return &OperationResult{}, nil
+	}
+	if retry := models.Value(operation.RetryAfter); retry != "" {
+		headers := http.Header{}
+		headers.Set(wire.HeaderRetryAfter, retry)
+		options.initialDelay = retryDelay(headers, 0, 0)
+	}
+	options.taskURI = models.Value(operation.TaskURI)
+	if options.taskURI == "" {
+		options.taskURI = models.Value(operation.ODataID)
+	}
+	result, err := c.pollOperation(ctx, uri, monitor, options)
+	if result != nil {
+		result.InitialHTTPStatus = int(models.Value(operation.HTTPStatus))
+		result.TaskMonitorURI = models.Value(operation.TaskMonitor)
+		result.TaskURI = options.taskURI
+		result.InitialRetryAfter = models.Value(operation.RetryAfter)
+	}
+	return result, err
+}
+
+func (c *Client) pollOperation(ctx context.Context, uri string, monitor bool, options PollOptions) (*OperationResult, error) {
+	ctx, cancel, interval, err := pollContext(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	if options.initialDelay > 0 {
+		if err = waitContext(ctx, options.initialDelay); err != nil {
+			return nil, err
+		}
+	}
+	failures := 0
+	for {
+		response, err := c.Request(ctx, http.MethodGet, uri, nil)
+		if err != nil {
+			if monitor && (sdkerrors.IsStatus(err, http.StatusNotFound) || sdkerrors.IsStatus(err, http.StatusGone)) && options.taskURI != "" {
+				task, verifyErr := getResource[models.Task](ctx, c, options.taskURI)
+				result := &OperationResult{Task: task, Response: response, MonitorMissing: true}
+				if verifyErr != nil {
+					return result, verifyErr
+				}
+				if failure := taskFailure(task); failure != nil {
+					return result, failure
+				}
+				if models.Value(task.TaskState) != TaskCompleted {
+					return result, &AsyncOperationError{Task: task, Response: response, Message: "Task monitor disappeared before terminal task state could be verified"}
+				}
+				return result, nil
+			}
+			retryable := sdkerrors.IsStatus(err, 429) || sdkerrors.IsStatus(err, 503) || (options.AllowNotFoundRecovery && sdkerrors.IsStatus(err, 404))
+			var transport *sdkerrors.TransportError
+			if errors.As(err, &transport) && safeMethod(transport.Method) {
+				retryable = true
+			}
+			visibilityDelay := false
+			if options.AllowTaskVisibilityDelay {
+				var rf *sdkerrors.Error
+				if errors.As(err, &rf) && rf.StatusCode == http.StatusInternalServerError {
+					var body struct {
+						Code int `json:"code"`
+					}
+					visibilityDelay = json.Unmarshal(rf.Body, &body) == nil && body.Code == _ieitTaskVisibilityDelayCode
+				}
+			}
+			if visibilityDelay || (retryable && failures < options.MaxTransientFailures) {
+				failures++
+				if err = waitContext(ctx, interval); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			return nil, err
+		}
+		failures = 0
+		result := &OperationResult{Response: response}
+		if validJSON(response.Body) {
+			var task models.Task
+			if err = json.Unmarshal(response.Body, &task); err != nil {
+				return nil, err
+			}
+			result.Task = &task
+			if err = taskFailure(&task); err != nil {
+				return result, err
+			}
+			if models.Value(task.TaskState) == TaskCompleted {
+				return result, nil
+			}
+			if !monitor && models.Value(task.TaskState) == "" {
+				return result, errors.New("task resource is missing TaskState")
+			}
+		}
+		if monitor && response.StatusCode != http.StatusAccepted && (result.Task == nil || models.Value(result.Task.TaskState) == "") {
+			return result, nil
+		}
+		if !monitor && result.Task == nil {
+			return result, errors.New("task resource response is empty")
+		}
+		delay := interval
+		if response.Header.Get(wire.HeaderRetryAfter) != "" {
+			delay = retryDelay(response.Header, interval, 0)
+		}
+		if err = waitContext(ctx, delay); err != nil {
+			return result, fmt.Errorf("waiting for Redfish task: %w", err)
+		}
+	}
+}

@@ -1,0 +1,304 @@
+[
+  {
+    "vendor": "generic",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "generic",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "generic",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "enginetech",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "enginetech",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ],
+      "Oem": {
+        "Public": {
+          "PreserveConf": false
+        }
+      }
+    }
+  },
+  {
+    "vendor": "enginetech",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ],
+      "Oem": {
+        "Public": {
+          "PreserveConf": true
+        }
+      }
+    }
+  },
+  {
+    "vendor": "inspur",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS"
+    }
+  },
+  {
+    "vendor": "inspur",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Oem": {
+        "Public": {
+          "PreserveConf": false
+        }
+      }
+    }
+  },
+  {
+    "vendor": "inspur",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Oem": {
+        "Public": {
+          "PreserveConf": true
+        }
+      }
+    }
+  },
+  {
+    "vendor": "zte",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS"
+    }
+  },
+  {
+    "vendor": "zte",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Oem": {
+        "Public": {
+          "PreserveConf": false
+        }
+      }
+    }
+  },
+  {
+    "vendor": "zte",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Oem": {
+        "Public": {
+          "PreserveConf": true
+        }
+      }
+    }
+  },
+  {
+    "vendor": "h3c",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin"
+    }
+  },
+  {
+    "vendor": "h3c",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "Oem": {
+        "Public": {
+          "Preserve": "Restore"
+        }
+      }
+    }
+  },
+  {
+    "vendor": "h3c",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "Oem": {
+        "Public": {
+          "Preserve": "Retain"
+        }
+      }
+    }
+  },
+  {
+    "vendor": "nettrix",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "nettrix",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ],
+      "SaveConfig": false
+    }
+  },
+  {
+    "vendor": "nettrix",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ],
+      "SaveConfig": true
+    }
+  },
+  {
+    "vendor": "xfusion",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS"
+    }
+  },
+  {
+    "vendor": "xfusion",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "PreserveConfig": false
+    }
+  },
+  {
+    "vendor": "xfusion",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "PreserveConfig": true
+    }
+  },
+  {
+    "vendor": "lenovo",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "lenovo",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "lenovo",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "ieit",
+    "preserve_config": null,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "ieit",
+    "preserve_config": false,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  },
+  {
+    "vendor": "ieit",
+    "preserve_config": true,
+    "expected": {
+      "ImageURI": "https://images.invalid/fw.bin",
+      "TransferProtocol": "HTTPS",
+      "Targets": [
+        "/components/bmc"
+      ]
+    }
+  }
+]
