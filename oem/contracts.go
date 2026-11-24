@@ -1,44 +1,27 @@
-// Package oem implements vendor strategies independently of the HTTP client.
+// Package oem retains constructors for vendor resource implementations.
+// Interfaces and standard behavior are defined in client/provider.
 package oem
 
-import "github.com/rednote-infra/redfish-sdk-go/models"
+import "github.com/rednote-infra/redfish-sdk-go/client/provider"
 
-type Object = models.Object
-
-type Vendor string
+type Object = provider.Object
+type Vendor = provider.Vendor
+type Extractor = provider.Extractor
+type UpdateStrategy = provider.UpdateStrategy
+type LogCollectStrategy = provider.LogCollectStrategy
+type UpdateRequest = provider.UpdateRequest
+type DiagnosticOptions = provider.DiagnosticOptions
 
 const (
-	VendorGeneric       Vendor = "generic"
-	VendorAMI           Vendor = "ami"
-	VendorZTE           Vendor = "zte"
-	VendorInspur        Vendor = "inspur"
-	VendorIEIT          Vendor = "ieit"
-	VendorH3C           Vendor = "h3c"
-	VendorXFusion       Vendor = "xfusion"
-	VendorLenovo        Vendor = "lenovo"
-	VendorNettrix       Vendor = "nettrix"
-	VendorEnginetech    Vendor = "enginetech"
-	VendorSmoothcompute Vendor = "smoothcompute"
-)
-
-// Extractor isolates OEM readings and resource layouts from the standard APIs.
-type Extractor interface {
-	InletHistoryURI(*models.Thermal) (string, error)
-	FanSpeedRatio(*models.Fan) *float64
-	DriveTemperature(*models.Drive) *float64
-}
-
-type UpdateStrategy interface {
-	BuildBody(UpdateRequest) (Object, error)
-}
-
-type LogCollectStrategy interface {
-	BuildBody(DiagnosticOptions) (Object, error)
-	SelectService([]models.Log) (*models.Log, error)
-}
-
-var (
-	_ Extractor          = extractor{}
-	_ UpdateStrategy     = updateStrategy{}
-	_ LogCollectStrategy = logCollectStrategy{}
+	VendorGeneric       = provider.VendorGeneric
+	VendorAMI           = provider.VendorAMI
+	VendorZTE           = provider.VendorZTE
+	VendorInspur        = provider.VendorInspur
+	VendorIEIT          = provider.VendorIEIT
+	VendorH3C           = provider.VendorH3C
+	VendorXFusion       = provider.VendorXFusion
+	VendorLenovo        = provider.VendorLenovo
+	VendorNettrix       = provider.VendorNettrix
+	VendorEnginetech    = provider.VendorEnginetech
+	VendorSmoothcompute = provider.VendorSmoothcompute
 )

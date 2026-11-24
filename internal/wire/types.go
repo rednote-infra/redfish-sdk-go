@@ -24,3 +24,9 @@ const (
 	DiagnosticAllLogs = "AllLogs"
 	H3CDiagnosticPath = "/mnt/sdmmc0p1/sds/bmc/dump.tar.gz"
 )
+
+const (
+	FieldSpeedRatio         = "SpeedRatio"
+	FieldTemperatureCelsius = "TemperatureCelsius"
+	FieldLegacyTemperature  = "temperature"
+)

@@ -6,10 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
+	resourceprovider "github.com/rednote-infra/redfish-sdk-go/client/provider"
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
@@ -19,12 +19,9 @@ import (
 
 const (
 	_ieitTaskVisibilityDelayCode = 17017
-	_diagnosticAllLogs           = wire.DiagnosticAllLogs
-	_h3cSDSPath                  = wire.H3CDiagnosticPath
-	_diagnosticProtocolHTTPS     = wire.TransferProtocolHTTPS
 )
 
-type DiagnosticOptions = oem.DiagnosticOptions
+type DiagnosticOptions = resourceprovider.DiagnosticOptions
 
 type DiagnosticTask struct {
 	Task                                                          *models.Task
@@ -120,75 +117,69 @@ func (p vendorLogCollect) Collect(ctx context.Context, c *Client, options Diagno
 }
 
 func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider LogCollectStrategy, options DiagnosticOptions) (*DiagnosticTask, error) {
-	if vendor == VendorEnginetech {
-		return c.collectSystemDiagnostic(ctx, provider, options)
+	layout := diagnosticLayout(provider)
+	if layout.SystemScope {
+		task, err := c.collectSystemDiagnostic(ctx, provider, options)
+		if task != nil {
+			task.Vendor = vendor
+		}
+		return task, err
 	}
 	manager, err := c.GetManager(ctx, options.ManagerID)
 	if err != nil {
 		return nil, err
 	}
-	collectionURI, err := requireLink(manager.LogServices, "LogServices")
-	if err != nil {
-		return nil, err
+	var collectionURI string
+	if !layout.UseManagerActions && layout.ManagerServiceSuffix == "" {
+		collectionURI, err = requireLink(manager.LogServices, "LogServices")
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	task := &DiagnosticTask{Vendor: vendor, Task: &models.Task{TaskState: models.Ptr(TaskRunning)}, DownloadMethod: http.MethodGet, FreshTrigger: true}
 	body, err := provider.BuildBody(options)
 	if err != nil {
 		return nil, err
 	}
+
 	var target string
-	switch vendor {
-	case VendorEnginetech:
-		system, err := c.GetSystem(ctx)
-		if err != nil {
-			return nil, err
-		}
-		collectionURI, err = requireLink(system.LogServices, "LogServices")
-		if err != nil {
-			return nil, err
-		}
-	case VendorH3C, VendorXFusion:
+	var directActions map[string]json.RawMessage
+	if layout.UseManagerActions {
 		if manager.Actions == nil {
 			return nil, errors.New("manager does not advertise diagnostic actions")
 		}
-		action, err := findAction(manager.Actions.Extra, wire.ActionDump)
-		if err != nil && vendor == VendorXFusion {
-			action, task.SourceLogServiceURI, err = c.diagnosticAction(ctx, collectionURI, "ExportLog", options.LogID)
-		}
+		directActions = manager.Actions.Extra
+	} else if layout.ManagerServiceSuffix != "" {
+		directActions, err = c.resourceActions(ctx, strings.TrimRight(models.Value(manager.ODataID), "/")+layout.ManagerServiceSuffix)
 		if err != nil {
 			return nil, err
 		}
-		target = action.Target
-		download, err := findAction(manager.Actions.Extra, wire.ActionGeneralDownload)
-		if err != nil {
-			return nil, err
-		}
-		task.DownloadURI = download.Target
-		task.DownloadMethod = http.MethodPost
-		task.DownloadBody = Object{wire.FieldTransferProtocol: _diagnosticProtocolHTTPS}
-		if vendor == VendorH3C {
-			task.DownloadBody[wire.FieldContent] = _h3cSDSPath
-		} else {
-			task.DownloadBody[wire.FieldPath] = body[wire.FieldContent]
-		}
-	case VendorSmoothcompute:
-		actions, err := c.resourceActions(ctx, strings.TrimRight(models.Value(manager.ODataID), "/")+"/DiagnosticService")
-		if err != nil {
-			return nil, err
-		}
-		action, err := findAction(actions, "CollectBlackInfo")
-		if err != nil {
-			return nil, err
-		}
-		target = action.Target
-		download, err := findAction(actions, "DownloadBlackInfo")
-		if err != nil {
-			return nil, err
-		}
-		task.DownloadURI = download.Target
-		task.DownloadMethod = http.MethodPost
 	}
-	if target == "" && vendor != VendorZTE && vendor != VendorInspur && vendor != VendorIEIT && vendor != VendorLenovo {
+	if layout.UseManagerActions || layout.ManagerServiceSuffix != "" {
+		action, resolveErr := findAction(directActions, layout.CollectAction)
+		if resolveErr != nil && layout.FallbackCollectAction != "" {
+			collectionURI, err = requireLink(manager.LogServices, "LogServices")
+			if err != nil {
+				return nil, err
+			}
+			action, task.SourceLogServiceURI, resolveErr = c.diagnosticAction(ctx, collectionURI, layout.FallbackCollectAction, options.LogID)
+		}
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		target = action.Target
+		download, err := findAction(directActions, layout.DownloadAction)
+		if err != nil {
+			return nil, err
+		}
+		task.DownloadURI = download.Target
+		task.DownloadMethod = http.MethodPost
+		if builder, ok := diagnosticImplementation(provider).(resourceprovider.DiagnosticDownloadBuilder); ok {
+			task.DownloadBody = builder.BuildDownloadBody(body)
+		}
+	}
+	if target == "" && layout.SelectService {
 		services, err := collection[models.Log](ctx, c, collectionURI)
 		if err != nil {
 			return nil, err
@@ -207,7 +198,7 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 		if service == nil || service.Actions == nil {
 			return nil, errors.New("diagnostic provider selected no actionable log service")
 		}
-		action, err := findAction(service.Actions.Extra, wire.ActionCollectDiagnosticData)
+		action, err := findAction(service.Actions.Extra, layout.CollectAction)
 		if err != nil {
 			return nil, err
 		}
@@ -215,49 +206,39 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 		task.SourceLogServiceURI = models.Value(service.ODataID)
 	}
 	if target == "" {
-		name := wire.ActionCollectDiagnosticData
-		switch vendor {
-		case VendorZTE:
-			name = wire.ActionDump
-		case VendorInspur, VendorIEIT, VendorLenovo:
-			name = wire.ActionCollectAllLog
-		}
-		action, source, err := c.diagnosticAction(ctx, collectionURI, name, options.LogID)
+		action, source, err := c.diagnosticAction(ctx, collectionURI, layout.CollectAction, options.LogID)
 		if err != nil {
 			return nil, err
 		}
 		target = action.Target
 		task.SourceLogServiceURI = source
-		switch vendor {
-		case VendorZTE:
-			task.ProgressURI = strings.TrimRight(target, "/") + "/Progress"
-			var previous zteProgress
-			if err = c.Get(ctx, task.ProgressURI, &previous); err != nil && !errors.Is(err, sdkerrors.ErrNotFound) {
+		if layout.ProgressSuffix != "" {
+			task.ProgressURI = strings.TrimRight(target, "/") + layout.ProgressSuffix
+		}
+		if layout.ProbeBeforeCollect {
+			previous, err := c.readDiagnosticProgress(ctx, provider, task.ProgressURI)
+			if err != nil && !errors.Is(err, sdkerrors.ErrNotFound) {
 				return nil, err
 			}
-			task.PreviousArtifact = previous.TarPath
-			download, _, err := c.diagnosticAction(ctx, collectionURI, wire.ActionExportLogs, options.LogID)
+			task.PreviousArtifact = previous.Artifact
+		}
+		if layout.DownloadAction != "" {
+			download, _, err := c.diagnosticAction(ctx, collectionURI, layout.DownloadAction, options.LogID)
 			if err != nil {
 				return nil, err
 			}
 			task.DownloadURI = download.Target
 			task.DownloadMethod = http.MethodPost
-		case VendorInspur, VendorIEIT, VendorLenovo:
-			download, _, err := c.diagnosticAction(ctx, collectionURI, wire.ActionDownloadAllLog, options.LogID)
+		}
+		if layout.ProgressAction != "" {
+			progress, _, err := c.diagnosticAction(ctx, collectionURI, layout.ProgressAction, options.LogID)
 			if err != nil {
 				return nil, err
 			}
-			task.DownloadURI = download.Target
-			task.DownloadMethod = http.MethodPost
-			if vendor == VendorLenovo {
-				progress, _, err := c.diagnosticAction(ctx, collectionURI, wire.ActionGetLogCollectProgress, options.LogID)
-				if err != nil {
-					return nil, err
-				}
-				task.ProgressURI = progress.Target
-			}
+			task.ProgressURI = progress.Target
 		}
 	}
+
 	response, err := c.Post(ctx, target, body)
 	if err != nil {
 		return nil, err
@@ -287,25 +268,6 @@ func (c *Client) collectDiagnostic(ctx context.Context, vendor Vendor, provider 
 	return task, nil
 }
 
-type zteProgress struct {
-	State      string                `json:"State"`
-	Percentage models.StringOrNumber `json:"Percentage"`
-	TarPath    string                `json:"TarPath"`
-	Type       string                `json:"Type"`
-}
-
-type lenovoProgressFields struct {
-	Progress *models.StringOrNumber `json:"Progress"`
-	Status   *models.StringOrNumber `json:"Status"`
-}
-
-type lenovoProgress struct {
-	OEM struct {
-		Lenovo *lenovoProgressFields `json:"Lenovo"`
-		Public *lenovoProgressFields `json:"Public"`
-	} `json:"Oem"`
-}
-
 func (p vendorLogCollect) Wait(ctx context.Context, c *Client, task *DiagnosticTask, options PollOptions) error {
 	return c.waitDiagnostic(ctx, task, options)
 }
@@ -314,7 +276,12 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 	if task == nil || task.Task == nil {
 		return errors.New("diagnostic task metadata is missing")
 	}
-	if task.Vendor == VendorIEIT {
+	strategy, err := c.diagnosticProvider(task.Vendor)
+	if err != nil {
+		return err
+	}
+	layout := diagnosticLayout(strategy)
+	if layout.AllowTaskVisibilityDelay {
 		options.AllowTaskVisibilityDelay = true
 	}
 	if options.Timeout == 0 {
@@ -369,62 +336,33 @@ func (c *Client) waitDiagnostic(ctx context.Context, task *DiagnosticTask, optio
 	defer cancel()
 	observedNew := !task.FreshTrigger
 	for iteration := 0; ; iteration++ {
-		if task.Vendor == VendorZTE {
-			var progress zteProgress
-			if err = c.Get(ctx, task.ProgressURI, &progress); err != nil {
-				return err
-			}
-			percentage, _ := strconv.Atoi(string(progress.Percentage))
-			terminal := slices.Contains([]string{"STATE_COMPLETED", "STATE_SUCCESS", "STATE_SUCCESSED", "STATE_FINISH"}, progress.State) || percentage >= 100
-			failed := progress.State == "STATE_FAILED" || progress.State == "STATE_ERROR"
-			if !terminal && !failed {
-				observedNew = true
-			}
-			stale := task.FreshTrigger && !observedNew && ((task.PreviousArtifact != "" && progress.TarPath == task.PreviousArtifact) || (task.PreviousArtifact == "" && iteration == 0))
-			if terminal && !stale {
-				if progress.TarPath == "" {
-					return errors.New("ZTE collection completed without TarPath")
+
+		progress, err := c.readDiagnosticProgress(ctx, strategy, task.ProgressURI)
+		if err != nil {
+			return err
+		}
+		if !progress.Complete && !progress.Failed {
+			observedNew = true
+		}
+		stale := layout.ProbeBeforeCollect && task.FreshTrigger && !observedNew && ((task.PreviousArtifact != "" && progress.Artifact == task.PreviousArtifact) || (task.PreviousArtifact == "" && iteration == 0))
+
+		if progress.Complete && !stale && (!progress.Failed || progress.CompletionWins) {
+			if validator, ok := diagnosticImplementation(strategy).(interface {
+				ValidateArtifact(resourceprovider.DiagnosticProgress) error
+			}); ok {
+				if err := validator.ValidateArtifact(progress); err != nil {
+					return err
 				}
-				kind := progress.Type
-				if kind == "" {
-					kind = _diagnosticAllLogs
-				}
-				task.DownloadBody = Object{wire.FieldType: kind, wire.FieldContent: progress.TarPath}
-				task.Task.TaskState = models.Ptr(TaskCompleted)
-				return nil
 			}
-			if failed && (!task.FreshTrigger || iteration > 0) {
-				return &AsyncOperationError{Task: task.Task, Message: "ZTE diagnostic collection failed: " + progress.State}
+			if progress.DownloadBody != nil {
+				task.DownloadBody = progress.DownloadBody
 			}
-		} else if task.Vendor == VendorLenovo {
-			var progress lenovoProgress
-			if err = c.Get(ctx, task.ProgressURI, &progress); err != nil {
-				return err
-			}
-			fields := progress.OEM.Lenovo
-			if fields == nil {
-				fields = progress.OEM.Public
-			}
-			if fields == nil || fields.Progress == nil {
-				return errors.New("Lenovo progress response is missing Progress")
-			}
-			percentage, err := strconv.Atoi(string(*fields.Progress))
-			if err != nil {
-				return err
-			}
-			if percentage >= 100 {
-				if fields.Status != nil {
-					status, err := strconv.Atoi(string(*fields.Status))
-					if err != nil {
-						return err
-					}
-					if status != 0 && status != 5 {
-						return &AsyncOperationError{Task: task.Task, Message: "Lenovo diagnostic collection failed"}
-					}
-				}
-				task.Task.TaskState = models.Ptr(TaskCompleted)
-				return nil
-			}
+			task.Task.TaskState = models.Ptr(TaskCompleted)
+			return nil
+		}
+
+		if progress.Failed && (!layout.ProbeBeforeCollect || !task.FreshTrigger || iteration > 0) {
+			return &AsyncOperationError{Task: task.Task, Message: progress.FailureMessage}
 		}
 		if err = waitContext(ctx, interval); err != nil {
 			return err
@@ -665,7 +603,7 @@ func (c *Client) collectSystemDiagnostic(ctx context.Context, provider LogCollec
 	if location := response.Header.Get(wire.HeaderLocation); location != "" {
 		task.TaskMonitor = &location
 	}
-	return &DiagnosticTask{Task: task, Response: response, Vendor: VendorEnginetech, SourceLogServiceURI: source, FreshTrigger: true}, nil
+	return &DiagnosticTask{Task: task, Response: response, Vendor: VendorGeneric, SourceLogServiceURI: source, FreshTrigger: true}, nil
 }
 
 func (c *Client) WaitForDiagnosticData(ctx context.Context, task *DiagnosticTask, options PollOptions) error {
@@ -737,7 +675,9 @@ func taskArtifactURI(task *DiagnosticTask) string {
 }
 
 func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options DiagnosticOptions) (*DiagnosticTask, error) {
-	if p.vendor == VendorZTE {
+
+	layout := diagnosticLayout(p)
+	if layout.ReuseProgress {
 		manager, err := c.GetManager(ctx, options.ManagerID)
 		if err != nil {
 			return nil, err
@@ -746,34 +686,31 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 		if err != nil {
 			return nil, err
 		}
-		action, source, err := c.diagnosticAction(ctx, uri, wire.ActionDump, options.LogID)
+		action, source, err := c.diagnosticAction(ctx, uri, layout.CollectAction, options.LogID)
 		if err != nil {
 			return nil, err
 		}
-		progressURI := strings.TrimRight(action.Target, "/") + "/Progress"
-		var progress zteProgress
-		if err = c.Get(ctx, progressURI, &progress); err != nil {
+		progressURI := strings.TrimRight(action.Target, "/") + layout.ProgressSuffix
+		progress, err := c.readDiagnosticProgress(ctx, p, progressURI)
+		if err != nil {
 			if errors.Is(err, sdkerrors.ErrNotFound) {
 				return nil, nil
 			}
 			return nil, err
 		}
-		percent, err := strconv.Atoi(string(progress.Percentage))
-		if err != nil {
+		if !progress.Reusable {
 			return nil, nil
 		}
-		if progress.State == "" || strings.Contains(progress.State, "FAILED") || strings.Contains(progress.State, "ERROR") || percent >= 100 || slices.Contains([]string{"STATE_COMPLETED", "STATE_SUCCESS", "STATE_SUCCESSED", "STATE_FINISH"}, progress.State) {
-			return nil, nil
-		}
-		download, _, err := c.diagnosticAction(ctx, uri, wire.ActionExportLogs, options.LogID)
+		download, _, err := c.diagnosticAction(ctx, uri, layout.DownloadAction, options.LogID)
 		if err != nil {
 			return nil, err
 		}
 		return &DiagnosticTask{Task: &models.Task{TaskState: models.Ptr(TaskRunning)}, Vendor: p.vendor, ProgressURI: progressURI, DownloadURI: download.Target, DownloadMethod: http.MethodPost, SourceLogServiceURI: source}, nil
 	}
-	if p.vendor != VendorGeneric && p.vendor != VendorIEIT {
+	if !layout.ReuseTasks {
 		return nil, nil
 	}
+
 	tasks, err := c.GetTasks(ctx)
 	if err != nil {
 		if errors.Is(err, sdkerrors.ErrNotFound) {
@@ -795,7 +732,7 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 		}
 		copy := task
 		result := &DiagnosticTask{Vendor: p.vendor, Task: &copy}
-		if p.vendor == VendorIEIT {
+		if layout.DownloadAction != "" {
 			manager, err := c.GetManager(ctx, options.ManagerID)
 			if err != nil {
 				return nil, err
@@ -804,7 +741,7 @@ func (p vendorLogCollect) FindExisting(ctx context.Context, c *Client, options D
 			if err != nil {
 				return nil, err
 			}
-			download, source, err := c.diagnosticAction(ctx, uri, wire.ActionDownloadAllLog, options.LogID)
+			download, source, err := c.diagnosticAction(ctx, uri, layout.DownloadAction, options.LogID)
 			if err != nil {
 				return nil, err
 			}
@@ -822,4 +759,28 @@ func (c *Client) diagnosticProvider(vendor Vendor) (LogCollectStrategy, error) {
 		vendor = VendorGeneric
 	}
 	return c.cfg.providers.ResolveLogCollect(vendor)
+}
+
+func diagnosticImplementation(strategy LogCollectStrategy) LogCollectStrategy {
+	if adapter, ok := strategy.(vendorLogCollect); ok {
+		return adapter.LogCollectStrategy
+	}
+	return strategy
+}
+func diagnosticLayout(strategy LogCollectStrategy) resourceprovider.DiagnosticLayout {
+	if policy, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticResourceStrategy); ok {
+		return policy.DiagnosticLayout()
+	}
+	return (resourceprovider.DefaultLogCollectStrategy{}).DiagnosticLayout()
+}
+func (c *Client) readDiagnosticProgress(ctx context.Context, strategy LogCollectStrategy, uri string) (resourceprovider.DiagnosticProgress, error) {
+	reader, ok := diagnosticImplementation(strategy).(resourceprovider.DiagnosticProgressReader)
+	if !ok {
+		return resourceprovider.DiagnosticProgress{}, errors.New("diagnostic provider does not support progress resources")
+	}
+	response, err := c.Request(ctx, http.MethodGet, uri, nil)
+	if err != nil {
+		return resourceprovider.DiagnosticProgress{}, err
+	}
+	return reader.DecodeProgress(response.Body)
 }

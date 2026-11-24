@@ -2,17 +2,16 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 
+	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
-	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
 	"github.com/rednote-infra/redfish-sdk-go/oem"
 )
 
-type Vendor = oem.Vendor
+type Vendor = provider.Vendor
 
 const (
 	VendorGeneric       = oem.VendorGeneric
@@ -28,9 +27,14 @@ const (
 	VendorSmoothcompute = oem.VendorSmoothcompute
 )
 
-type Extractor = oem.Extractor
-type UpdateStrategy = oem.UpdateStrategy
-type LogCollectStrategy = oem.LogCollectStrategy
+type Extractor = provider.Extractor
+type UpdateStrategy = provider.UpdateStrategy
+type LogCollectStrategy = provider.LogCollectStrategy
+
+// Default strategies implement the standard Redfish resource behavior.
+type DefaultExtractor = provider.DefaultExtractor
+type DefaultUpdateStrategy = provider.DefaultUpdateStrategy
+type DefaultLogCollectStrategy = provider.DefaultLogCollectStrategy
 
 // ProviderRegistry is client-scoped. Registering a provider never changes another client.
 type ProviderRegistry struct {
@@ -165,7 +169,7 @@ func (r *ProviderRegistry) LogCollect(vendor Vendor) LogCollectStrategy {
 func (c *Client) Providers() *ProviderRegistry { return c.cfg.providers }
 
 func DetectVendor(manufacturer string, extensions *models.Oem) Vendor {
-	return oem.DetectVendor(manufacturer, extensions)
+	return provider.DetectVendor(manufacturer, extensions)
 }
 
 func (c *Client) vendor(ctx context.Context) (Vendor, error) {
@@ -193,13 +197,7 @@ func (c *Client) GetInletHistoryTemperature(ctx context.Context, chassisID ...st
 	}
 	vendor := c.cfg.vendor
 	if vendor == "" {
-		vendor = VendorGeneric
-		if thermal.OEM != nil {
-			var marker map[string]json.RawMessage
-			if json.Unmarshal((*thermal.OEM)[wire.OEMNamespaceAMI], &marker) == nil && marker != nil {
-				vendor = VendorAMI
-			}
-		}
+		vendor = provider.DetectThermalVendor(thermal)
 	}
 	provider, err := c.cfg.providers.ResolveExtractor(vendor)
 	if err != nil {

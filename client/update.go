@@ -9,13 +9,13 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rednote-infra/redfish-sdk-go/client/provider"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
-	"github.com/rednote-infra/redfish-sdk-go/oem"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
-type UpdateRequest = oem.UpdateRequest
+type UpdateRequest = provider.UpdateRequest
 
 func (c *Client) SimpleUpdate(ctx context.Context, request UpdateRequest) (*models.RedfishResponse, error) {
 	vendor := request.Vendor
