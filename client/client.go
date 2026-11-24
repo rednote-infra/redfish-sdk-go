@@ -35,7 +35,7 @@ const (
 
 // Object is an explicitly constructed mutation or a genuinely dynamic resource.
 // A nil map value sends JSON null; omitted keys are never synthesized.
-type Object map[string]any
+type Object = models.Object
 
 type RetryPolicy struct {
 	// Safety permits mutation replay only when explicitly set to RetrySafetyIdempotent.

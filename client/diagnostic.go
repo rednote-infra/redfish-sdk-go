@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,23 +13,18 @@ import (
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
+	"github.com/rednote-infra/redfish-sdk-go/oem"
 	sdkresponse "github.com/rednote-infra/redfish-sdk-go/response"
 )
 
 const (
 	_ieitTaskVisibilityDelayCode = 17017
-	_diagnosticManager           = "Manager"
-	_diagnosticOEM               = "OEM"
-	_diagnosticAllLogs           = "AllLogs"
-	_h3cSDSPath                  = "/mnt/sdmmc0p1/sds/bmc/dump.tar.gz"
-	_xfusionContentDirectory     = "/tmp/web"
+	_diagnosticAllLogs           = wire.DiagnosticAllLogs
+	_h3cSDSPath                  = wire.H3CDiagnosticPath
 	_diagnosticProtocolHTTPS     = wire.TransferProtocolHTTPS
 )
 
-type DiagnosticOptions struct {
-	DiagnosticDataType, OEMDiagnosticDataType, LogID, ManagerID string
-	OEMParameters                                               Object
-}
+type DiagnosticOptions = oem.DiagnosticOptions
 
 type DiagnosticTask struct {
 	Task                                                          *models.Task
@@ -57,57 +51,14 @@ type DiagnosticLifecycle interface {
 	Download(context.Context, *Client, *DiagnosticTask, string) (string, error)
 }
 
-type vendorLogCollect struct{ vendor Vendor }
-
-func (p vendorLogCollect) BuildBody(options DiagnosticOptions) (Object, error) {
-	kind := options.DiagnosticDataType
-	body := Object{}
-	switch p.vendor {
-	case VendorInspur, VendorIEIT, VendorLenovo, VendorSmoothcompute:
-	case VendorZTE:
-		if kind == "" {
-			kind = _diagnosticAllLogs
-		}
-		body[wire.FieldType] = kind
-	case VendorH3C:
-		body[wire.FieldType] = wire.DiagnosticOutputURI
-		body[wire.FieldContent] = _h3cSDSPath
-		if kind != "" {
-			body["LogType"] = kind
-		}
-	case VendorXFusion:
-		body[wire.FieldType] = wire.DiagnosticOutputURI
-		body[wire.FieldContent] = fmt.Sprintf("%s/xf_sdk_%d.tar.gz", _xfusionContentDirectory, time.Now().UnixNano())
-	case VendorEnginetech:
-		if kind == "" {
-			kind = _diagnosticOEM
-		}
-		body[wire.FieldDiagnosticDataType] = kind
-		body[wire.FieldOEMDiagnosticDataType] = "BlackBox"
-	default:
-		if kind == "" {
-			kind = _diagnosticManager
-		}
-		body[wire.FieldDiagnosticDataType] = kind
-	}
-	if options.OEMDiagnosticDataType != "" {
-		body[wire.FieldOEMDiagnosticDataType] = options.OEMDiagnosticDataType
-	}
-	for key, value := range options.OEMParameters {
-		body[key] = value
-	}
-	return body, nil
+// vendorLogCollect adapts an OEM policy to the legacy Client lifecycle hooks.
+type vendorLogCollect struct {
+	vendor Vendor
+	LogCollectStrategy
 }
 
-func (p vendorLogCollect) SelectService(services []models.Log) (*models.Log, error) {
-	for _, service := range services {
-		if service.Actions != nil {
-			if _, err := findAction(service.Actions.Extra, wire.ActionCollectDiagnosticData); err == nil {
-				return &service, nil
-			}
-		}
-	}
-	return nil, errors.New("no log service advertises CollectDiagnosticData")
+func builtinLogCollect(vendor Vendor) vendorLogCollect {
+	return vendorLogCollect{vendor: vendor, LogCollectStrategy: oem.NewLogCollectStrategy(vendor)}
 }
 
 func (c *Client) diagnosticAction(ctx context.Context, collectionURI, name, logID string) (*Action, string, error) {

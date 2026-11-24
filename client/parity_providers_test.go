@@ -10,11 +10,12 @@ import (
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/models"
+	"github.com/rednote-infra/redfish-sdk-go/oem"
 )
 
 func TestProviderDiscoveryIsLazyAndLoadsSelectedFactoryOnce(t *testing.T) {
 	var discovered, loaded atomic.Int32
-	provider := vendorExtractor{vendor: VendorAMI}
+	provider := oem.NewExtractor(VendorAMI)
 	registry := NewProviderRegistryWithOptions(ProviderRegistryOptions{Discover: func() ([]ProviderRegistration, error) {
 		discovered.Add(1)
 		return []ProviderRegistration{{Category: OEMExtractor, Vendor: "CUSTOM", LoadExtractor: func() (Extractor, error) { loaded.Add(1); return provider, nil }}}, nil
@@ -97,7 +98,7 @@ func TestUpdateProviderCanReplaceCompleteWorkflow(t *testing.T) {
 
 func TestProviderOverridePriorityIsExplicitAndClientScoped(t *testing.T) {
 	discovered := func() ([]ProviderRegistration, error) {
-		return []ProviderRegistration{{Category: OEMExtractor, Vendor: VendorAMI, LoadExtractor: func() (Extractor, error) { return vendorExtractor{vendor: VendorGeneric}, nil }}}, nil
+		return []ProviderRegistration{{Category: OEMExtractor, Vendor: VendorAMI, LoadExtractor: func() (Extractor, error) { return oem.NewExtractor(VendorGeneric), nil }}}, nil
 	}
 	registry := NewProviderRegistryWithOptions(ProviderRegistryOptions{Discover: discovered, AllowBuiltinOverrides: true})
 	copy := registry.Clone()
@@ -109,7 +110,7 @@ func TestProviderOverridePriorityIsExplicitAndClientScoped(t *testing.T) {
 	if uri, err := provider.InletHistoryURI(thermal); err != nil || uri != "/legacy" {
 		t.Fatal("discovered provider did not override built-in")
 	}
-	if err := registry.RegisterExtractor(VendorAMI, vendorExtractor{vendor: VendorAMI}); err != nil {
+	if err := registry.RegisterExtractor(VendorAMI, oem.NewExtractor(VendorAMI)); err != nil {
 		t.Fatal(err)
 	}
 	provider, err = registry.ResolveExtractor(VendorAMI)

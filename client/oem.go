@@ -4,46 +4,33 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
-	"strings"
 	"sync"
 
 	sdkerrors "github.com/rednote-infra/redfish-sdk-go/errors"
 	"github.com/rednote-infra/redfish-sdk-go/internal/wire"
 	"github.com/rednote-infra/redfish-sdk-go/models"
+	"github.com/rednote-infra/redfish-sdk-go/oem"
 )
 
-type Vendor string
+type Vendor = oem.Vendor
 
 const (
-	VendorGeneric       Vendor = "generic"
-	VendorAMI           Vendor = "ami"
-	VendorZTE           Vendor = "zte"
-	VendorInspur        Vendor = "inspur"
-	VendorIEIT          Vendor = "ieit"
-	VendorH3C           Vendor = "h3c"
-	VendorXFusion       Vendor = "xfusion"
-	VendorLenovo        Vendor = "lenovo"
-	VendorNettrix       Vendor = "nettrix"
-	VendorEnginetech    Vendor = "enginetech"
-	VendorSmoothcompute Vendor = "smoothcompute"
+	VendorGeneric       = oem.VendorGeneric
+	VendorAMI           = oem.VendorAMI
+	VendorZTE           = oem.VendorZTE
+	VendorInspur        = oem.VendorInspur
+	VendorIEIT          = oem.VendorIEIT
+	VendorH3C           = oem.VendorH3C
+	VendorXFusion       = oem.VendorXFusion
+	VendorLenovo        = oem.VendorLenovo
+	VendorNettrix       = oem.VendorNettrix
+	VendorEnginetech    = oem.VendorEnginetech
+	VendorSmoothcompute = oem.VendorSmoothcompute
 )
 
-// Extractor isolates OEM readings and resource layouts from the standard APIs.
-type Extractor interface {
-	InletHistoryURI(*models.Thermal) (string, error)
-	FanSpeedRatio(*models.Fan) *float64
-	DriveTemperature(*models.Drive) *float64
-}
-
-type UpdateStrategy interface {
-	BuildBody(UpdateRequest) (Object, error)
-}
-
-type LogCollectStrategy interface {
-	BuildBody(DiagnosticOptions) (Object, error)
-	SelectService([]models.Log) (*models.Log, error)
-}
+type Extractor = oem.Extractor
+type UpdateStrategy = oem.UpdateStrategy
+type LogCollectStrategy = oem.LogCollectStrategy
 
 // ProviderRegistry is client-scoped. Registering a provider never changes another client.
 type ProviderRegistry struct {
@@ -72,14 +59,12 @@ func NewProviderRegistry() *ProviderRegistry {
 		logs:       map[Vendor]LogCollectStrategy{},
 	}
 	for _, vendor := range []Vendor{VendorGeneric, VendorAMI, VendorZTE, VendorInspur, VendorIEIT, VendorH3C, VendorXFusion, VendorLenovo, VendorNettrix, VendorEnginetech, VendorSmoothcompute} {
-		r.extractors[vendor] = vendorExtractor{vendor: vendor}
-		r.updates[vendor] = vendorUpdate{vendor: vendor}
-		r.logs[vendor] = vendorLogCollect{vendor: vendor}
+		r.extractors[vendor] = oem.NewExtractor(vendor)
+		r.updates[vendor] = oem.NewUpdateStrategy(vendor)
+		r.logs[vendor] = builtinLogCollect(vendor)
 	}
-	r.updates[VendorIEIT] = vendorUpdate{vendor: VendorGeneric}
-	r.extractors[VendorIEIT] = vendorExtractor{vendor: VendorGeneric}
-	r.logs[VendorAMI] = vendorLogCollect{vendor: VendorGeneric}
-	r.logs[VendorNettrix] = vendorLogCollect{vendor: VendorGeneric}
+	r.logs[VendorAMI] = builtinLogCollect(VendorGeneric)
+	r.logs[VendorNettrix] = builtinLogCollect(VendorGeneric)
 	return r
 }
 
@@ -179,31 +164,8 @@ func (r *ProviderRegistry) LogCollect(vendor Vendor) LogCollectStrategy {
 
 func (c *Client) Providers() *ProviderRegistry { return c.cfg.providers }
 
-func DetectVendor(manufacturer string, oem *models.Oem) Vendor {
-	value := strings.ToLower(manufacturer)
-	variants := []struct {
-		vendor   Vendor
-		keywords []string
-	}{
-		{vendor: VendorEnginetech, keywords: []string{"enginetech", "\u5b89\u64ce"}}, {vendor: VendorInspur, keywords: []string{"inspur", "maginfra", "\u6d6a\u6f6e"}}, {vendor: VendorIEIT, keywords: []string{"ieit systems"}}, {vendor: VendorZTE, keywords: []string{"zte", "\u4e2d\u5174"}}, {vendor: VendorH3C, keywords: []string{"h3c", "\u65b0\u534e\u4e09"}}, {vendor: VendorNettrix, keywords: []string{"nettrix", "\u5b81\u7545"}}, {vendor: VendorXFusion, keywords: []string{"xfusion", "huawei", "\u8d85\u805a\u53d8"}}, {vendor: VendorLenovo, keywords: []string{"lenovo", "\u8054\u60f3"}}, {vendor: VendorSmoothcompute, keywords: []string{"smoothcompute", "\u987a\u7b97"}}, {vendor: VendorAMI, keywords: []string{"ami", "megarac"}},
-	}
-	for _, variant := range variants {
-		for _, keyword := range variant.keywords {
-			if strings.Contains(value, keyword) {
-				return variant.vendor
-			}
-		}
-	}
-	if oem != nil {
-		for key := range *oem {
-			for _, variant := range variants {
-				if strings.EqualFold(key, string(variant.vendor)) {
-					return variant.vendor
-				}
-			}
-		}
-	}
-	return VendorGeneric
+func DetectVendor(manufacturer string, extensions *models.Oem) Vendor {
+	return oem.DetectVendor(manufacturer, extensions)
 }
 
 func (c *Client) vendor(ctx context.Context) (Vendor, error) {
@@ -222,90 +184,6 @@ func (c *Client) vendor(ctx context.Context) (Vendor, error) {
 		return VendorGeneric, err
 	}
 	return DetectVendor(models.Value(system.Manufacturer), system.OEM), nil
-}
-
-type vendorExtractor struct{ vendor Vendor }
-
-func (p vendorExtractor) InletHistoryURI(thermal *models.Thermal) (string, error) {
-	if p.vendor == VendorAMI {
-		if models.Value(thermal.ODataID) == "" {
-			return "", errors.New("Thermal is missing @odata.id")
-		}
-		return strings.TrimRight(models.Value(thermal.ODataID), "/") + "/Oem/Ami/InletHistoryTemperature", nil
-	}
-	return requireLink(thermal.InletHistoryTemperature, "InletHistoryTemperature")
-}
-
-func (p vendorExtractor) FanSpeedRatio(fan *models.Fan) *float64 {
-	if fan.SpeedPercent != nil && fan.SpeedPercent.Reading != nil {
-		return clonePointer(fan.SpeedPercent.Reading)
-	}
-	derive := func() *float64 {
-		if fan.Reading != nil && fan.MaxReadingRange != nil && *fan.MaxReadingRange > 0 {
-			return models.Ptr(math.Round(float64(*fan.Reading)/float64(*fan.MaxReadingRange)*1000) / 10)
-		}
-		return nil
-	}
-	switch p.vendor {
-	case VendorXFusion:
-		return oemNumber(fan.OEM, wire.OEMNamespaceXFusion, "SpeedRatio")
-	case VendorZTE, VendorH3C:
-		return oemNumber(fan.OEM, wire.FieldPublic, "SpeedRatio")
-	case VendorInspur, VendorIEIT:
-		primary := oemNumber(fan.OEM, wire.OEMNamespaceCustom, "SpeedRatio")
-		if primary != nil && *primary != 0 {
-			return primary
-		}
-		fallback := oemNumber(fan.OEM, wire.FieldPublic, "SpeedRatio")
-		if fallback != nil {
-			return fallback
-		}
-		return primary
-	case VendorNettrix:
-		ratio := oemNumber(fan.OEM, wire.FieldPublic, "SpeedRatio")
-		if ratio != nil && *ratio != 0 {
-			return ratio
-		}
-		return derive()
-	default:
-		return derive()
-	}
-}
-
-func (p vendorExtractor) DriveTemperature(drive *models.Drive) *float64 {
-	switch p.vendor {
-	case VendorXFusion:
-		return oemNumber(drive.OEM, wire.OEMNamespaceXFusion, "TemperatureCelsius")
-	case VendorZTE, VendorH3C:
-		return oemNumber(drive.OEM, wire.FieldPublic, "TemperatureCelsius")
-	case VendorInspur, VendorIEIT, VendorLenovo:
-		return oemNumber(drive.OEM, wire.FieldPublic, "temperature")
-	case VendorNettrix:
-		return drive.DiskTemperatureCelsius
-	default:
-		return nil
-	}
-}
-
-func oemNumber(oem *models.Oem, namespace, key string) *float64 {
-	if oem == nil {
-		return nil
-	}
-	var fields map[string]json.RawMessage
-	if json.Unmarshal((*oem)[namespace], &fields) != nil {
-		return nil
-	}
-	var number float64
-	if json.Unmarshal(fields[key], &number) == nil {
-		return &number
-	}
-	var text string
-	if json.Unmarshal(fields[key], &text) == nil {
-		if json.Unmarshal([]byte(text), &number) == nil {
-			return &number
-		}
-	}
-	return nil
 }
 
 func (c *Client) GetInletHistoryTemperature(ctx context.Context, chassisID ...string) (*models.InletHistoryTemperature, error) {

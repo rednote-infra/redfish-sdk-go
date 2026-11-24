@@ -19,3 +19,8 @@ const (
 	FieldImage       = "Image"
 	FieldInserted    = "Inserted"
 )
+
+const (
+	DiagnosticAllLogs = "AllLogs"
+	H3CDiagnosticPath = "/mnt/sdmmc0p1/sds/bmc/dump.tar.gz"
+)

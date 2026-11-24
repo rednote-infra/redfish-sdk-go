@@ -89,50 +89,6 @@ func run() error {
 
 See [examples/inventory](examples/inventory/main.go) for another inventory example.
 
-## Power Control
-
-Using `sdk` and `ctx` from the quick start:
-
-```go
-if _, err := sdk.Reset(ctx, client.ResetOn, client.ResetOptions{}); err != nil {
-	return err
-}
-```
-
-Other reset types include `client.ResetGracefulShutdown`, `client.ResetGracefulRestart`, and `client.ResetForceRestart`. The SDK checks the action and values advertised by the BMC.
-
-## Diagnostic Downloads
-
-Collect, wait, and save the diagnostic bundle:
-
-```go
-logCtx, cancelLogs := context.WithTimeout(context.Background(), 10*time.Minute)
-defer cancelLogs()
-
-path, err := sdk.CollectAndDownloadDiagnosticData(
-	logCtx,
-	"diagnostic.tar.gz",
-	client.CollectDownloadOptions{},
-)
-if err != nil {
-	return err
-}
-fmt.Println("Saved:", path)
-```
-
-To return the bundle in memory:
-
-```go
-bundle, err := sdk.CollectAndDownloadDiagnosticDataBytes(
-	logCtx,
-	client.CollectDownloadOptions{},
-)
-if err != nil {
-	return err
-}
-fmt.Printf("Downloaded %d bytes\n", len(bundle))
-```
-
 ## Contributing
 
 Issues and pull requests are welcome.

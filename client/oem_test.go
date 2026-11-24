@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rednote-infra/redfish-sdk-go/models"
+	"github.com/rednote-infra/redfish-sdk-go/oem"
 )
 
 func TestUpdateWireBodiesMatchPythonSDK(t *testing.T) {
@@ -59,7 +60,7 @@ func TestExtractorsMatchObservedLayouts(t *testing.T) {
 func TestProviderRegistriesAreClientScoped(t *testing.T) {
 	first := NewProviderRegistry()
 	second := first.Clone()
-	if err := first.RegisterExtractor(VendorGeneric, vendorExtractor{vendor: VendorAMI}); err != nil {
+	if err := first.RegisterExtractor(VendorGeneric, oem.NewExtractor(VendorAMI)); err != nil {
 		t.Fatal(err)
 	}
 	thermal := &models.Thermal{ODataID: models.Ptr("/thermal"), InletHistoryTemperature: &models.Link{ODataID: models.Ptr("/legacy")}}
